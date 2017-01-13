@@ -116,3 +116,6 @@
 "access_res_font_all","res_res_font all","model_res_font",,1,0,0,0
 "access_res_font_group_user","res_res_font group_user","model_res_font","group_user",1,1,1,1
 "access_ir_logging","ir_logging admin","model_ir_logging","group_erp_manager",1,1,1,1
+access_ir_sessions,access_ir_sessions,model_ir_sessions,,1,1,1,0
+access_ir_sessions_erp_manager,access_ir_sessions_erp_manager,model_ir_sessions,base.group_erp_manager,1,1,1,1
+accsess_ir_property_erp_manager,ir_property_erp_manager,base.model_ir_property,base.group_erp_manager,1,1,1,1
