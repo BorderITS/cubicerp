@@ -46,6 +46,9 @@
                     <group name="schedule_control">
                         <label for="id" string="Schedule Control"/>
                         <div>
+                            <p>
+                                <label string="You can planning schedule when user login"/>
+                            </p>
                             <div>
                                 <field name="module_auth_calendar" class="oe_inline"/>
                                 <label for="module_auth_calendar"/>
