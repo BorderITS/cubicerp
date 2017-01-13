@@ -517,6 +517,11 @@ class Home(http.Controller):
     @http.route('/web/login', type='http', auth="none")
     def web_login(self, redirect=None, **kw):
         ensure_db()
+        multi_ok = True
+        calendar_set = 0
+        calendar_ok = False
+        calendar_group = ''
+        unsuccessful_message = ''
 
         if request.httprequest.method == 'GET' and redirect and request.session.uid:
             return http.redirect_with_hash(redirect)
@@ -536,23 +541,182 @@ class Home(http.Controller):
 
         if request.httprequest.method == 'POST':
             old_uid = request.uid
-            uid = request.session.authenticate(request.session.db, request.params['login'], request.params['password'])
+            uid = False
+            if 'login' in request.params and 'password' in request.params:
+                uid = request.session.authenticate(request.session.db, request.params[
+                    'login'], request.params['password'])
             if uid is not False:
+                user = request.registry.get('res.users').browse(
+                    request.cr, request.uid, uid, request.context)
+                # if not uid is SUPERUSER_ID:
+                # check for multiple sessions block
+                sessions = request.registry.get('ir.sessions').search(
+                    request.cr, request.uid, [
+                        ('user_id', '=', uid), ('logged_in', '=', True)], context=request.context)
+
+                if sessions and user.multiple_sessions_block:
+                    multi_ok = False
+
+                    # *********************************comprobacion de la direcion IP (inicio)*********************************************************************
+                ip_check = True
+                #                    //*** cosas con IP Rolo
+                user_ips_with_mask = user.allowed_ip_address
+                # direccion ip del request
+                ip_address = IPAddress(request.httprequest.remote_addr)
+                if user_ips_with_mask and user_ips_with_mask.strip():
+                    # -- hay cosas seteadas asi que verificar
+                    ip_check = self._check_ip_address_match(ip_address, user_ips_with_mask)
+                else:
+                    # los grupos
+                    print " -- chequea las del grupos"
+                    march_some = False
+                    count_group_check = 0
+                    for group in user.groups_id:
+                        group_ips_with_mask = group.allowed_ip_address
+                        if group_ips_with_mask and group_ips_with_mask.strip():
+                            march_some = self._check_ip_address_match(ip_address, group_ips_with_mask.strip())
+                            count_group_check += 1
+
+                        if march_some:
+                            break
+                    ip_check = march_some if count_group_check > 0  else True
+
+                    # d ip_check  puesto adcional por Rolo
+                if not ip_check:
+                    unsuccessful_message = "unsuccessful login from '%s', IP Address not allowed" % (
+                        request.params['login'])
+
+                    # *********************************comprobacion de la direcion IP (Fin)*********************************************************************
+
+
+                    # *********************************comprobacion de la direcion MAC (inicio)*********************************************************************
+                mac_check = False
+                user_mac_address = user.allowed_mac_address
+                # direccion mac enviada desde el navegador
+                mac_address_request = request.httprequest.args.get('remote_mac', False)
+                if user_mac_address != None and user_mac_address != False:
+                    if mac_address_request in user_mac_address.split(','):
+                        mac_check = True
+                    else:
+                        # los grupos
+                        for group in user.groups_id:
+                            group_mac_address = group.allowed_mac_address
+                            if group_mac_address != None and group_mac_address != False:
+                                if mac_address_request in group_mac_address.split(','):
+                                    mac_check = True
+                                    break
+                else:
+                    mac_check = True
+
+                if not mac_check:
+                    unsuccessful_message = "unsuccessful login from '%s', MAC Address not allowed" % (
+                        request.params['login'])
+
+                    # *********************************comprobacion de la direcion MAC (Fin)*********************************************************************
+
+                if ip_check and multi_ok and (not uid is SUPERUSER_ID) and mac_check:
+                    # check calendars
+                    calendar_obj = request.registry.get(
+                        'resource.calendar')
+                    attendance_obj = request.registry.get(
+                        'resource.calendar.attendance')
+
+                    # GET USER LOCAL TIME
+                    if user.tz:
+                        tz = pytz.timezone(user.tz)
+                    else:
+                        tz = pytz.timezone('GMT')
+                    tzoffset = tz.utcoffset(now)
+                    now = now + tzoffset
+
+                    if user.login_calendar_id:
+                        calendar_set += 1
+                        # check user calendar
+                        attendances = attendance_obj.search(request.cr,
+                                                            request.uid,
+                                                            [('calendar_id', '=', user.login_calendar_id.id),
+                                                             ('dayofweek', '=', str(now.weekday())),
+                                                             ('hour_from', '<=', now.hour + now.minute / 60.0),
+                                                             ('hour_to', '>=', now.hour + now.minute / 60.0)],
+                                                            context=request.context)
+                        if attendances:
+                            calendar_ok = True
+                        else:
+                            unsuccessful_message = "unsuccessful login from '%s', user time out of allowed calendar defined in user " % \
+                                                   request.params[
+                                                       'login']
+                    else:
+                        # check user groups calendar
+                        for group in user.groups_id:
+                            if group.login_calendar_id:
+                                calendar_set += 1
+                                attendances = attendance_obj.search(request.cr,
+                                                                    request.uid, [('calendar_id', '=',
+                                                                                   group.login_calendar_id.id),
+                                                                                  ('dayofweek', '=',
+                                                                                   str(now.weekday())),
+                                                                                  ('hour_from', '<=',
+                                                                                   now.hour + now.minute / 60.0),
+                                                                                  ('hour_to', '>=',
+                                                                                   now.hour + now.minute / 60.0)],
+                                                                    context=request.context)
+                                if attendances:
+                                    calendar_ok = True
+                                else:
+                                    calendar_group = group.name
+                            if sessions and group.multiple_sessions_block and multi_ok:
+                                multi_ok = False
+                                unsuccessful_message = "unsuccessful login from '%s', multisessions block defined in group '%s'" % (
+                                    request.params['login'], group.name)
+                                break
+                        if calendar_set > 0 and calendar_ok == False:
+                            unsuccessful_message = "unsuccessful login from '%s', user time out of allowed calendar defined in group '%s'" % (
+                                request.params['login'], calendar_group)
+                else:
+                    if not unsuccessful_message:
+                        unsuccessful_message = "unsuccessful login from '%s', multisessions block defined in user" % \
+                                               request.params[
+                                                   'login']
+            else:
+                unsuccessful_message = "unsuccessful login from '%s', wrong username or password" % request.params[
+                    'login']
+            # ip_check added by Rolo
+            if not unsuccessful_message or (uid is SUPERUSER_ID and ip_check):
+                self.save_session(
+                    request.cr,
+                    uid,
+                    user.tz,
+                    request.httprequest.session.sid,
+                    context=request.context)
                 return http.redirect_with_hash(redirect)
+            user = request.registry.get('res.users').browse(
+                request.cr, SUPERUSER_ID, SUPERUSER_ID, request.context)
+            self.save_session(
+                request.cr,
+                uid,
+                user.tz,
+                request.httprequest.session.sid,
+                unsuccessful_message,
+                request.context)
+            _logger.error(unsuccessful_message)
             request.uid = old_uid
-            values['error'] = _("Wrong login/password")
-        if request.env.ref('web.login', False):
-            return request.render('web.login', values)
-        else:
-            # probably not an odoo compatible database
-            error = 'Unable to login on database %s' % request.session.db
-            return werkzeug.utils.redirect('/web/database/selector?error=%s' % error, 303)
+            values['error'] = 'Login failed due to one of the following reasons:'
+            values['reason1'] = '- Wrong login/password'
+            values['reason2'] = '- User not allowed to have multiple logins'
+            values[
+                'reason3'] = '- User not allowed to login at this specific time or day or From Specific IP Address or From Specific MAC Address'
+        return request.render('web.login', values)
 
     @http.route('/login', type='http', auth="none")
     def login(self, db, login, key, redirect="/web", **kw):
         if not http.db_filter([db]):
             return werkzeug.utils.redirect('/', 303)
         return login_and_redirect(db, login, key, redirect_url=redirect)
+
+    @http.route('/web/session/logout', type='http', auth="none")
+    def logout(self, redirect='/web'):
+        request.session.logout(keep_db=True, logout_type='ul')
+        return werkzeug.utils.redirect(redirect, 303)
 
     @http.route([
         '/web/js/<xmlid>',
@@ -580,6 +744,74 @@ class Home(http.Controller):
 
         response = request.make_response(bundle.css(page), [('Content-Type', 'text/css')])
         return make_conditional(response, bundle.last_modified, max_age=BUNDLE_MAXAGE)
+
+    def _check_ip_address_match(self, ip_address, matches_mask):
+        match_some = False
+        list_to_check = matches_mask.split(',')
+        if list_to_check:
+            for ip_and_mask in list_to_check:
+                if ip_and_mask == 'localhost':
+                    ip_and_mask = '127.0.0.1'
+                if ip_address in IPNetwork(ip_and_mask):
+                    match_some = True
+                    break
+
+        return match_some;
+
+    def save_session(self, cr, uid, tz, sid, unsuccessful_message='', context=None):
+        now = datetime.datetime.now()
+        session_obj = request.registry.get('ir.sessions')
+        cr = request.registry.cursor()
+
+        # for GeoIP
+        geo_ip_resolver = None
+        ip_location = ""
+
+        try:
+            import GeoIP
+            geo_ip_resolver = GeoIP.open('/usr/share/GeoIP/GeoIP.dat', GeoIP.GEOIP_STANDARD)
+        except ImportError:
+            geo_ip_resolver = False
+        if geo_ip_resolver:
+            ip_location = (str(geo_ip_resolver.country_name_by_addr(request.httprequest.remote_addr)) or "")
+
+        # autocommit: our single update request will be performed atomically.
+        # (In this way, there is no opportunity to have two transactions
+        # interleaving their cr.execute()..cr.commit() calls and have one
+        # of them rolled back due to a concurrent access.)
+        cr.autocommit(True)
+        user = request.registry.get('res.users').browse(cr, request.uid, uid, request.context)
+        ip = request.httprequest.headers.environ['REMOTE_ADDR']
+        logged_in = True
+        if unsuccessful_message:
+            uid = SUPERUSER_ID
+            logged_in = False
+            sessions = False
+        else:
+            sessions = session_obj.search(cr, uid, [('session_id', '=', sid),
+                                                    ('ip', '=', ip),
+                                                    ('user_id', '=', uid),
+                                                    ('logged_in', '=', True)],
+                                          context=context)
+        if not sessions:
+            values = {
+                'user_id': uid,
+                'logged_in': logged_in,
+                'session_id': sid,
+                'session_seconds': user.session_default_seconds,
+                'multiple_sessions_block': user.multiple_sessions_block,
+                'date_login': now,
+                'expiration_date': datetime.datetime.strftime(
+                    (now + relativedelta(seconds=user.session_default_seconds)), DEFAULT_SERVER_DATETIME_FORMAT),
+                'ip': ip,
+                'ip_location': ip_location,
+                'remote_tz': tz or 'GMT',
+                'unsuccessful_message': unsuccessful_message,
+            }
+            session_obj.create(cr, uid, values, context=context)
+            cr.commit()
+        cr.close()
+        return True
 
 
 class WebClient(http.Controller):
@@ -1666,284 +1898,5 @@ class Apps(http.Controller):
         return werkzeug.utils.redirect('/web{0}#sa={1}'.format(debug, sakey))
 
     _logger = logging.getLogger(__name__)
-
-
-class Home_tkobr(Home):
-    @http.route('/web/login', type='http', auth="none")
-    def web_login(self, redirect=None, **kw):
-        openerp.addons.web.controllers.main.ensure_db()
-        multi_ok = True
-        calendar_set = 0
-        calendar_ok = False
-        calendar_group = ''
-        unsuccessful_message = ''
-        now = datetime.now()
-
-        if request.httprequest.method == 'GET' and redirect and request.session.uid:
-            return http.redirect_with_hash(redirect)
-
-        if not request.uid:
-            request.uid = openerp.SUPERUSER_ID
-
-        values = request.params.copy()
-        if not redirect:
-            redirect = '/web?' + request.httprequest.query_string
-        values['redirect'] = redirect
-
-        try:
-            values['databases'] = http.db_list()
-        except openerp.exceptions.AccessDenied:
-            values['databases'] = None
-
-        if request.httprequest.method == 'POST':
-            old_uid = request.uid
-            uid = False
-            if 'login' in request.params and 'password' in request.params:
-                uid = request.session.authenticate(request.session.db, request.params[
-                    'login'], request.params['password'])
-            if uid is not False:
-                user = request.registry.get('res.users').browse(
-                    request.cr, request.uid, uid, request.context)
-                # if not uid is SUPERUSER_ID:
-                # check for multiple sessions block
-                sessions = request.registry.get('ir.sessions').search(
-                    request.cr, request.uid, [
-                        ('user_id', '=', uid), ('logged_in', '=', True)], context=request.context)
-
-                if sessions and user.multiple_sessions_block:
-                    multi_ok = False
-
-                    # *********************************comprobacion de la direcion IP (inicio)*********************************************************************
-                ip_check = True
-                #                    //*** cosas con IP Rolo
-                user_ips_with_mask = user.allowed_ip_address
-                # direccion ip del request
-                ip_address = IPAddress(request.httprequest.remote_addr)
-                if user_ips_with_mask and user_ips_with_mask.strip():
-                    # -- hay cosas seteadas asi que verificar
-                    ip_check = self._check_ip_address_match(ip_address, user_ips_with_mask)
-                else:
-                    # los grupos
-                    print " -- chequea las del grupos"
-                    march_some = False
-                    count_group_check = 0
-                    for group in user.groups_id:
-                        group_ips_with_mask = group.allowed_ip_address
-                        if group_ips_with_mask and group_ips_with_mask.strip():
-                            march_some = self._check_ip_address_match(ip_address, group_ips_with_mask.strip())
-                            count_group_check += 1
-
-                        if march_some:
-                            break
-                    ip_check = march_some if count_group_check > 0  else True
-
-                    # d ip_check  puesto adcional por Rolo
-                if not ip_check:
-                    unsuccessful_message = "unsuccessful login from '%s', IP Address not allowed" % (
-                        request.params['login'])
-
-                    # *********************************comprobacion de la direcion IP (Fin)*********************************************************************
-
-
-                    # *********************************comprobacion de la direcion MAC (inicio)*********************************************************************
-                mac_check = False
-                user_mac_address = user.allowed_mac_address
-                # direccion mac enviada desde el navegador
-                mac_address_request = request.httprequest.params('remote_mac')
-                if user_mac_address != None and user_mac_address != False:
-                    if mac_address_request in user_mac_address.split(','):
-                        mac_check = True
-                    else:
-                        # los grupos
-                        for group in user.groups_id:
-                            group_mac_address = group.allowed_mac_address
-                            if group_mac_address != None and group_mac_address != False:
-                                if mac_address_request in group_mac_address.split(','):
-                                    mac_check = True
-                                    break
-                else:
-                    mac_check = True
-
-                if not mac_check:
-                    unsuccessful_message = "unsuccessful login from '%s', MAC Address not allowed" % (
-                        request.params['login'])
-
-                    # *********************************comprobacion de la direcion MAC (Fin)*********************************************************************
-
-                if ip_check and multi_ok and (not uid is SUPERUSER_ID) and mac_check:
-                    # check calendars
-                    calendar_obj = request.registry.get(
-                        'resource.calendar')
-                    attendance_obj = request.registry.get(
-                        'resource.calendar.attendance')
-
-                    # GET USER LOCAL TIME
-                    if user.tz:
-                        tz = pytz.timezone(user.tz)
-                    else:
-                        tz = pytz.timezone('GMT')
-                    tzoffset = tz.utcoffset(now)
-                    now = now + tzoffset
-
-                    if user.login_calendar_id:
-                        calendar_set += 1
-                        # check user calendar
-                        attendances = attendance_obj.search(request.cr,
-                                                            request.uid,
-                                                            [('calendar_id', '=', user.login_calendar_id.id),
-                                                             ('dayofweek', '=', str(now.weekday())),
-                                                             ('hour_from', '<=', now.hour + now.minute / 60.0),
-                                                             ('hour_to', '>=', now.hour + now.minute / 60.0)],
-                                                            context=request.context)
-                        if attendances:
-                            calendar_ok = True
-                        else:
-                            unsuccessful_message = "unsuccessful login from '%s', user time out of allowed calendar defined in user " % \
-                                                   request.params[
-                                                       'login']
-                    else:
-                        # check user groups calendar
-                        for group in user.groups_id:
-                            if group.login_calendar_id:
-                                calendar_set += 1
-                                attendances = attendance_obj.search(request.cr,
-                                                                    request.uid, [('calendar_id', '=',
-                                                                                   group.login_calendar_id.id),
-                                                                                  ('dayofweek', '=',
-                                                                                   str(now.weekday())),
-                                                                                  ('hour_from', '<=',
-                                                                                   now.hour + now.minute / 60.0),
-                                                                                  ('hour_to', '>=',
-                                                                                   now.hour + now.minute / 60.0)],
-                                                                    context=request.context)
-                                if attendances:
-                                    calendar_ok = True
-                                else:
-                                    calendar_group = group.name
-                            if sessions and group.multiple_sessions_block and multi_ok:
-                                multi_ok = False
-                                unsuccessful_message = "unsuccessful login from '%s', multisessions block defined in group '%s'" % (
-                                    request.params['login'], group.name)
-                                break
-                        if calendar_set > 0 and calendar_ok == False:
-                            unsuccessful_message = "unsuccessful login from '%s', user time out of allowed calendar defined in group '%s'" % (
-                                request.params['login'], calendar_group)
-                else:
-                    if not unsuccessful_message:
-                        unsuccessful_message = "unsuccessful login from '%s', multisessions block defined in user" % \
-                                               request.params[
-                                                   'login']
-            else:
-                unsuccessful_message = "unsuccessful login from '%s', wrong username or password" % request.params[
-                    'login']
-            # ip_check added by Rolo
-            if not unsuccessful_message or (uid is SUPERUSER_ID and ip_check):
-                self.save_session(
-                    request.cr,
-                    uid,
-                    user.tz,
-                    request.httprequest.session.sid,
-                    context=request.context)
-                return http.redirect_with_hash(redirect)
-            user = request.registry.get('res.users').browse(
-                request.cr, SUPERUSER_ID, SUPERUSER_ID, request.context)
-            self.save_session(
-                request.cr,
-                uid,
-                user.tz,
-                request.httprequest.session.sid,
-                unsuccessful_message,
-                request.context)
-            _logger.error(unsuccessful_message)
-            request.uid = old_uid
-            values['error'] = 'Login failed due to one of the following reasons:'
-            values['reason1'] = '- Wrong login/password'
-            values['reason2'] = '- User not allowed to have multiple logins'
-            values[
-                'reason3'] = '- User not allowed to login at this specific time or day or From Specific IP Address or From Specific MAC Address'
-        return request.render('web.login', values)
-
-    def _check_ip_address_match(self, ip_address, matches_mask):
-
-        match_some = False
-        list_to_check = matches_mask.split(',')
-        if list_to_check:
-            for ip_and_mask in list_to_check:
-                if ip_and_mask == 'localhost':
-                    ip_and_mask = '127.0.0.1'
-                if ip_address in IPNetwork(ip_and_mask):
-                    match_some = True
-                    break
-
-        return match_some;
-
-    def save_session(self, cr, uid, tz, sid, unsuccessful_message='', context=None):
-        now = fields.datetime.now()
-        session_obj = request.registry.get('ir.sessions')
-        cr = request.registry.cursor()
-
-        # for GeoIP
-        geo_ip_resolver = None
-        ip_location = ""
-
-        try:
-            import GeoIP
-            geo_ip_resolver = GeoIP.open(
-                '/usr/share/GeoIP/GeoIP.dat',
-                GeoIP.GEOIP_STANDARD)
-        except ImportError:
-            geo_ip_resolver = False
-        if geo_ip_resolver:
-            ip_location = (str(geo_ip_resolver.country_name_by_addr(
-                request.httprequest.remote_addr)) or "")
-
-        # autocommit: our single update request will be performed atomically.
-        # (In this way, there is no opportunity to have two transactions
-        # interleaving their cr.execute()..cr.commit() calls and have one
-        # of them rolled back due to a concurrent access.)
-        cr.autocommit(True)
-        user = request.registry.get('res.users').browse(
-            cr, request.uid, uid, request.context)
-        ip = request.httprequest.headers.environ['REMOTE_ADDR']
-        logged_in = True
-        if unsuccessful_message:
-            uid = SUPERUSER_ID
-            logged_in = False
-            sessions = False
-        else:
-            sessions = session_obj.search(cr, uid, [('session_id', '=', sid),
-                                                    ('ip', '=', ip),
-                                                    ('user_id', '=', uid),
-                                                    ('logged_in', '=', True)],
-                                          context=context)
-        if not sessions:
-            values = {
-                'user_id': uid,
-                'logged_in': logged_in,
-                'session_id': sid,
-                'session_seconds': user.session_default_seconds,
-                'multiple_sessions_block': user.multiple_sessions_block,
-                'date_login': now,
-                'expiration_date': datetime.strftime(
-                    (datetime.strptime(
-                        now,
-                        DEFAULT_SERVER_DATETIME_FORMAT) +
-                     relativedelta(
-                         seconds=user.session_default_seconds)),
-                    DEFAULT_SERVER_DATETIME_FORMAT),
-                'ip': ip,
-                'ip_location': ip_location,
-                'remote_tz': tz or 'GMT',
-                'unsuccessful_message': unsuccessful_message,
-            }
-            session_obj.create(cr, uid, values, context=context)
-            cr.commit()
-        cr.close()
-        return True
-
-    @http.route('/web/session/logout', type='http', auth="none")
-    def logout(self, redirect='/web'):
-        request.session.logout(keep_db=True, logout_type='ul')
-        return werkzeug.utils.redirect(redirect, 303)
 
 # vim:expandtab:tabstop=4:softtabstop=4:shiftwidth=4:
