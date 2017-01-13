@@ -24,6 +24,7 @@ from cStringIO import StringIO
 import babel.messages.pofile
 import werkzeug.utils
 import werkzeug.wrappers
+
 try:
     import xlwt
 except ImportError:
@@ -41,7 +42,7 @@ from openerp import http
 from openerp.http import request, serialize_exception as _serialize_exception
 
 # By Peter Paul
-from netaddr import  IPAddress , IPNetwork
+from netaddr import IPAddress, IPNetwork
 from openerp import SUPERUSER_ID
 import pytz
 from openerp.osv import fields
@@ -63,13 +64,12 @@ env.filters["json"] = simplejson.dumps
 # 1 week cache for asset bundles as advised by Google Page Speed
 BUNDLE_MAXAGE = 60 * 60 * 24 * 7
 
-#----------------------------------------------------------
+# ----------------------------------------------------------
 # OpenERP Web helpers
-#----------------------------------------------------------
-
+# ----------------------------------------------------------
 db_list = http.db_list
-
 db_monodb = http.db_monodb
+
 
 def serialize_exception(f):
     @functools.wraps(f)
@@ -85,7 +85,9 @@ def serialize_exception(f):
                 'data': se
             }
             return werkzeug.exceptions.InternalServerError(simplejson.dumps(error))
+
     return wrap
+
 
 def redirect_with_hash(*args, **kw):
     """
@@ -95,11 +97,13 @@ def redirect_with_hash(*args, **kw):
     """
     return http.redirect_with_hash(*args, **kw)
 
+
 def abort_and_redirect(url):
     r = request.httprequest
     response = werkzeug.utils.redirect(url, 302)
     response = r.app.get_response(r, response, explicit_session=False)
     werkzeug.exceptions.abort(response)
+
 
 def ensure_db(redirect='/web/database/selector'):
     # This helper should be used in web client auth="none" routes
@@ -152,6 +156,7 @@ def ensure_db(redirect='/web/database/selector'):
 
     request.session.db = db
 
+
 def module_installed():
     # Candidates module the current heuristic is the /static dir
     loadable = http.addons_manifest.keys()
@@ -160,7 +165,7 @@ def module_installed():
     # Retrieve database installed modules
     # TODO The following code should move to ir.module.module.list_installed_modules()
     Modules = request.session.model('ir.module.module')
-    domain = [('state','=','installed'), ('name','in', loadable)]
+    domain = [('state', '=', 'installed'), ('name', 'in', loadable)]
     for module in Modules.search_read(domain, ['name', 'dependencies_id']):
         modules[module['name']] = []
         deps = module.get('dependencies_id')
@@ -172,6 +177,7 @@ def module_installed():
     sorted_modules = topological_sort(modules)
     return sorted_modules
 
+
 def module_installed_bypass_session(dbname):
     loadable = http.addons_manifest.keys()
     modules = {}
@@ -180,8 +186,8 @@ def module_installed_bypass_session(dbname):
         with registry.cursor() as cr:
             m = registry.get('ir.module.module')
             # TODO The following code should move to ir.module.module.list_installed_modules()
-            domain = [('state','=','installed'), ('name','in', loadable)]
-            ids = m.search(cr, 1, [('state','=','installed'), ('name','in', loadable)])
+            domain = [('state', '=', 'installed'), ('name', 'in', loadable)]
+            ids = m.search(cr, 1, [('state', '=', 'installed'), ('name', 'in', loadable)])
             for module in m.read(cr, 1, ids, ['name', 'dependencies_id']):
                 modules[module['name']] = []
                 deps = module.get('dependencies_id')
@@ -189,10 +195,11 @@ def module_installed_bypass_session(dbname):
                     deps_read = registry.get('ir.module.module.dependency').read(cr, 1, deps, ['name'])
                     dependencies = [i['name'] for i in deps_read]
                     modules[module['name']] = dependencies
-    except Exception,e:
+    except Exception, e:
         pass
     sorted_modules = topological_sort(modules)
     return sorted_modules
+
 
 def module_boot(db=None):
     server_wide_modules = openerp.conf.server_wide_modules or ['web']
@@ -207,6 +214,7 @@ def module_boot(db=None):
         dbside = [i for i in dbside if i not in serverside]
     addons = serverside + dbside
     return addons
+
 
 def concat_xml(file_list):
     """Concatenate xml files
@@ -229,16 +237,18 @@ def concat_xml(file_list):
 
         if root is None:
             root = ElementTree.Element(xml.tag)
-        #elif root.tag != xml.tag:
+        # elif root.tag != xml.tag:
         #    raise ValueError("Root tags missmatch: %r != %r" % (root.tag, xml.tag))
 
         for child in xml.getchildren():
             root.append(child)
     return ElementTree.tostring(root, 'utf-8'), checksum.hexdigest()
 
+
 def fs2web(path):
     """convert FS path into web path"""
     return '/'.join(path.split(os.path.sep))
+
 
 def manifest_glob(extension, addons=None, db=None, include_remotes=False):
     if addons is None:
@@ -262,6 +272,7 @@ def manifest_glob(extension, addons=None, db=None, include_remotes=False):
                     r.append((path, fs2web(path[len(addons_path):])))
     return r
 
+
 def manifest_list(extension, mods=None, db=None, debug=None):
     """ list ressources to load specifying either:
     mods: a comma separated string listing modules
@@ -271,6 +282,7 @@ def manifest_list(extension, mods=None, db=None, debug=None):
         _logger.warning("openerp.addons.web.main.manifest_list(): debug parameter is deprecated")
     files = manifest_glob(extension, addons=mods, db=db, include_remotes=True)
     return [wp for _fp, wp in files]
+
 
 def get_last_modified(files):
     """ Returns the modification time of the most recently modified
@@ -285,6 +297,7 @@ def get_last_modified(files):
         return max(datetime.datetime.fromtimestamp(os.path.getmtime(f))
                    for f in files)
     return datetime.datetime(1970, 1, 1)
+
 
 def make_conditional(response, last_modified=None, etag=None, max_age=0):
     """ Makes the provided response conditional based upon the request,
@@ -308,14 +321,17 @@ def make_conditional(response, last_modified=None, etag=None, max_age=0):
         response.set_etag(etag)
     return response.make_conditional(request.httprequest)
 
+
 def login_and_redirect(db, login, key, redirect_url='/web'):
     request.session.authenticate(db, login, key)
     return set_cookie_and_redirect(redirect_url)
+
 
 def set_cookie_and_redirect(redirect_url):
     redirect = werkzeug.utils.redirect(redirect_url, 303)
     redirect.autocorrect_location_header = False
     return redirect
+
 
 def login_redirect():
     url = '/web/login?'
@@ -326,6 +342,7 @@ def login_redirect():
     </script></head></html>
     """ % (url, redirect_url)
 
+
 def load_actions_from_ir_values(key, key2, models, meta):
     Values = request.session.model('ir.values')
     actions = Values.get(key, key2, models, meta, request.context)
@@ -333,12 +350,14 @@ def load_actions_from_ir_values(key, key2, models, meta):
     return [(id, name, clean_action(action))
             for id, name, action in actions]
 
+
 def clean_action(action):
     action.setdefault('flags', {})
     action_type = action.setdefault('type', 'ir.actions.act_window_close')
     if action_type == 'ir.actions.act_window':
         return fix_view_modes(action)
     return action
+
 
 # I think generate_views,fix_view_modes should go into js ActionManager
 def generate_views(action):
@@ -373,10 +392,11 @@ def generate_views(action):
                              'either multiple view modes or a single view '
                              'mode and an optional view id.\n\n Got view '
                              'modes %r and view id %r for action %r' % (
-                view_modes, view_id, action))
+                                 view_modes, view_id, action))
         action['views'] = [(False, mode) for mode in view_modes]
         return
     action['views'] = [(view_id, view_modes[0])]
+
 
 def fix_view_modes(action):
     """ For historical reasons, OpenERP has weird dealings in relation to
@@ -409,9 +429,10 @@ def fix_view_modes(action):
     action['views'] = [
         [id, mode if mode != 'tree' else 'list']
         for id, mode in action['views']
-    ]
+        ]
 
     return action
+
 
 def _local_web_translations(trans_file):
     messages = []
@@ -424,6 +445,7 @@ def _local_web_translations(trans_file):
         if x.id and x.string and "openerp-web" in x.auto_comments:
             messages.append({'id': x.id, 'string': x.string})
     return messages
+
 
 def xml2json_from_elementtree(el, preserve_whitespaces=False):
     """ xml2json-direct
@@ -451,6 +473,7 @@ def xml2json_from_elementtree(el, preserve_whitespaces=False):
     res["children"] = kids
     return res
 
+
 def content_disposition(filename):
     filename = ustr(filename)
     escaped = urllib2.quote(filename.encode('utf8'))
@@ -464,11 +487,10 @@ def content_disposition(filename):
         return "attachment; filename*=UTF-8''%s" % escaped
 
 
-#----------------------------------------------------------
+# ----------------------------------------------------------
 # OpenERP Web web Controllers
-#----------------------------------------------------------
+# ----------------------------------------------------------
 class Home(http.Controller):
-
     @http.route('/', type='http', auth="none")
     def index(self, s_action=None, db=None, **kw):
         return http.local_redirect('/web', query=request.params, keep_hash=True)
@@ -526,7 +548,6 @@ class Home(http.Controller):
             error = 'Unable to login on database %s' % request.session.db
             return werkzeug.utils.redirect('/web/database/selector?error=%s' % error, 303)
 
-
     @http.route('/login', type='http', auth="none")
     def login(self, db, login, key, redirect="/web", **kw):
         if not http.db_filter([db]):
@@ -560,8 +581,8 @@ class Home(http.Controller):
         response = request.make_response(bundle.css(page), [('Content-Type', 'text/css')])
         return make_conditional(response, bundle.last_modified, max_age=BUNDLE_MAXAGE)
 
-class WebClient(http.Controller):
 
+class WebClient(http.Controller):
     @http.route('/web/webclient/csslist', type='json', auth="none")
     def csslist(self, mods=None):
         return manifest_list('css', mods=mods)
@@ -613,7 +634,7 @@ class WebClient(http.Controller):
         if mods is None:
             m = request.registry.get('ir.module.module')
             mods = [x['name'] for x in m.search_read(request.cr, uid,
-                [('state','=','installed')], ['name'])]
+                                                     [('state', '=', 'installed')], ['name'])]
         if lang is None:
             lang = request.context["lang"]
         res_lang = request.registry.get('res.lang')
@@ -621,21 +642,22 @@ class WebClient(http.Controller):
         lang_params = None
         if ids:
             lang_params = res_lang.read(request.cr, uid, ids[0], ["direction", "date_format", "time_format",
-                                                "grouping", "decimal_point", "thousands_sep"])
+                                                                  "grouping", "decimal_point", "thousands_sep"])
 
         # Regional languages (ll_CC) must inherit/override their parent lang (ll), but this is
         # done server-side when the language is loaded, so we only need to load the user's lang.
         ir_translation = request.registry.get('ir.translation')
         translations_per_module = {}
-        messages = ir_translation.search_read(request.cr, uid, [('module','in',mods),('lang','=',lang),
-                                               ('comments','like','openerp-web'),('value','!=',False),
-                                               ('value','!=','')],
-                                              ['module','src','value','lang'], order='module')
+        messages = ir_translation.search_read(request.cr, uid, [('module', 'in', mods), ('lang', '=', lang),
+                                                                ('comments', 'like', 'openerp-web'),
+                                                                ('value', '!=', False),
+                                                                ('value', '!=', '')],
+                                              ['module', 'src', 'value', 'lang'], order='module')
         for mod, msg_group in itertools.groupby(messages, key=operator.itemgetter('module')):
-            translations_per_module.setdefault(mod,{'messages':[]})
+            translations_per_module.setdefault(mod, {'messages': []})
             translations_per_module[mod]['messages'].extend({'id': m['src'],
                                                              'string': m['value']} \
-                                                                for m in msg_group)
+                                                            for m in msg_group)
         return {"modules": translations_per_module,
                 "lang_parameters": lang_params}
 
@@ -647,8 +669,8 @@ class WebClient(http.Controller):
     def index(self, mod=None, **kwargs):
         return request.render('web.qunit_suite')
 
-class Proxy(http.Controller):
 
+class Proxy(http.Controller):
     @http.route('/web/proxy/load', type='json', auth="none")
     def load(self, path):
         """ Proxies an HTTP request through a JSON request.
@@ -665,8 +687,8 @@ class Proxy(http.Controller):
         base_url = request.httprequest.base_url
         return Client(request.httprequest.app, BaseResponse).get(path, base_url=base_url).data
 
-class Database(http.Controller):
 
+class Database(http.Controller):
     @http.route('/web/database/selector', type='http', auth="none")
     def selector(self, **kw):
         try:
@@ -728,7 +750,7 @@ class Database(http.Controller):
     def drop(self, fields):
         password, db = operator.itemgetter(
             'drop_pwd', 'drop_db')(
-                dict(map(operator.itemgetter('name', 'value'), fields)))
+            dict(map(operator.itemgetter('name', 'value'), fields)))
 
         try:
             if request.session.proxy("db").drop(password, db):
@@ -756,7 +778,7 @@ class Database(http.Controller):
             return response
         except Exception, e:
             _logger.exception('Database.backup')
-            return simplejson.dumps([[],[{'error': openerp.tools.ustr(e), 'title': _('Backup Database')}]])
+            return simplejson.dumps([[], [{'error': openerp.tools.ustr(e), 'title': _('Backup Database')}]])
 
     @http.route('/web/database/restore', type='http', auth="none")
     def restore(self, db_file, restore_pwd, new_db, mode):
@@ -772,7 +794,7 @@ class Database(http.Controller):
     def change_password(self, fields):
         old_password, new_password = operator.itemgetter(
             'old_pwd', 'new_pwd')(
-                dict(map(operator.itemgetter('name', 'value'), fields)))
+            dict(map(operator.itemgetter('name', 'value'), fields)))
         try:
             return request.session.proxy("db").change_admin_password(old_password, new_password)
         except openerp.exceptions.AccessDenied:
@@ -780,8 +802,8 @@ class Database(http.Controller):
         except Exception:
             return {'error': _('Error, password not changed !'), 'title': _('Change Password')}
 
-class Session(http.Controller):
 
+class Session(http.Controller):
     def session_info(self):
         request.session.ensure_valid()
         return {
@@ -807,18 +829,20 @@ class Session(http.Controller):
 
     @http.route('/web/session/change_password', type='json', auth="user")
     def change_password(self, fields):
-        old_password, new_password,confirm_password = operator.itemgetter('old_pwd', 'new_password','confirm_pwd')(
-                dict(map(operator.itemgetter('name', 'value'), fields)))
+        old_password, new_password, confirm_password = operator.itemgetter('old_pwd', 'new_password', 'confirm_pwd')(
+            dict(map(operator.itemgetter('name', 'value'), fields)))
         if not (old_password.strip() and new_password.strip() and confirm_password.strip()):
-            return {'error':_('You cannot leave any password empty.'),'title': _('Change Password')}
+            return {'error': _('You cannot leave any password empty.'), 'title': _('Change Password')}
         if new_password != confirm_password:
-            return {'error': _('The new password and its confirmation must be identical.'),'title': _('Change Password')}
+            return {'error': _('The new password and its confirmation must be identical.'),
+                    'title': _('Change Password')}
         try:
             if request.session.model('res.users').change_password(
-                old_password, new_password):
-                return {'new_password':new_password}
+                    old_password, new_password):
+                return {'new_password': new_password}
         except Exception:
-            return {'error': _('The old password you provided is incorrect, your password was not changed.'), 'title': _('Change Password')}
+            return {'error': _('The old password you provided is incorrect, your password was not changed.'),
+                    'title': _('Change Password')}
         return {'error': _('Error, password not changed !'), 'title': _('Change Password')}
 
     @http.route('/web/session/get_lang_list', type='json', auth="none")
@@ -874,8 +898,8 @@ class Session(http.Controller):
         request.session.logout(keep_db=True)
         return werkzeug.utils.redirect(redirect, 303)
 
-class Menu(http.Controller):
 
+class Menu(http.Controller):
     @http.route('/web/menu/load_needaction', type='json', auth="user")
     def load_needaction(self, menu_ids):
         """ Loads needaction counters for specific menu ids.
@@ -885,11 +909,12 @@ class Menu(http.Controller):
         """
         return request.session.model('ir.ui.menu').get_needaction_data(menu_ids, request.context)
 
-class DataSet(http.Controller):
 
+class DataSet(http.Controller):
     @http.route('/web/dataset/search_read', type='json', auth="user")
     def search_read(self, model, fields=False, offset=0, limit=False, domain=None, sort=None):
         return self.do_search_read(model, fields, offset, limit, domain, sort)
+
     def do_search_read(self, model, fields=False, offset=0, limit=False, domain=None
                        , sort=None):
         """ Performs a search() followed by a read() (if needed) using the
@@ -910,7 +935,7 @@ class DataSet(http.Controller):
         Model = request.session.model(model)
 
         records = Model.search_read(domain, fields, offset or 0, limit or False, sort or False,
-                           request.context)
+                                    request.context)
         if not records:
             return {
                 'length': 0,
@@ -982,11 +1007,11 @@ class DataSet(http.Controller):
             return False
         # python 2.6 has no start parameter
         for i, id in enumerate(ids):
-            m.write(id, { field: i + offset })
+            m.write(id, {field: i + offset})
         return True
 
-class View(http.Controller):
 
+class View(http.Controller):
     @http.route('/web/view/add_custom', type='json', auth="user")
     def add_custom(self, view_id, arch):
         CustomView = request.session.model('ir.ui.view.custom')
@@ -1000,7 +1025,7 @@ class View(http.Controller):
     @http.route('/web/view/undo_custom', type='json', auth="user")
     def undo_custom(self, view_id, reset=False):
         CustomView = request.session.model('ir.ui.view.custom')
-        vcustom = CustomView.search([('user_id', '=', request.session.uid), ('ref_id' ,'=', view_id)],
+        vcustom = CustomView.search([('user_id', '=', request.session.uid), ('ref_id', '=', view_id)],
                                     0, False, False, request.context)
         if vcustom:
             if reset:
@@ -1010,16 +1035,16 @@ class View(http.Controller):
             return {'result': True}
         return {'result': False}
 
-class TreeView(View):
 
+class TreeView(View):
     @http.route('/web/treeview/action', type='json', auth="user")
     def action(self, model, id):
         return load_actions_from_ir_values(
-            'action', 'tree_but_open',[(model, id)],
+            'action', 'tree_but_open', [(model, id)],
             False)
 
-class Binary(http.Controller):
 
+class Binary(http.Controller):
     @http.route('/web/binary/image', type='http', auth="public")
     def image(self, model, id, field, **kw):
         last_update = '__last_update'
@@ -1031,7 +1056,7 @@ class Binary(http.Controller):
         retag = hashed_session
         id = None if not id else simplejson.loads(id)
         if type(id) is list:
-            id = id[0] # m2o
+            id = id[0]  # m2o
         try:
             if etag:
                 if not id and hashed_session == etag:
@@ -1057,7 +1082,8 @@ class Binary(http.Controller):
                     # resize maximum 500*500
                     if width > 500: width = 500
                     if height > 500: height = 500
-                    image_base64 = openerp.tools.image_resize_image(base64_source=image_base64, size=(width, height), encoding='base64', filetype='PNG')
+                    image_base64 = openerp.tools.image_resize_image(base64_source=image_base64, size=(width, height),
+                                                                    encoding='base64', filetype='PNG')
 
             image_data = base64.b64decode(image_base64)
 
@@ -1108,8 +1134,8 @@ class Binary(http.Controller):
             if filename_field:
                 filename = res.get(filename_field, '') or filename
             return request.make_response(filecontent,
-                [('Content-Type', 'application/octet-stream'),
-                 ('Content-Disposition', content_disposition(filename))])
+                                         [('Content-Type', 'application/octet-stream'),
+                                          ('Content-Disposition', content_disposition(filename))])
 
     @http.route('/web/binary/saveas_ajax', type='http', auth="public")
     @serialize_exception
@@ -1135,15 +1161,15 @@ class Binary(http.Controller):
         filecontent = base64.b64decode(res.get(field) or '')
         if not filecontent and res.get(field) <> '===':
             raise ValueError(_("No content found for field '%s' on '%s:%s'") %
-                (field, model, id))
+                             (field, model, id))
         else:
             filename = '%s_%s' % (model.replace('.', '_'), id)
             if filename_field:
                 filename = res.get(filename_field, '') or filename
             return request.make_response(filecontent,
-                headers=[('Content-Type', 'application/octet-stream'),
-                        ('Content-Disposition', content_disposition(filename))],
-                cookies={'fileToken': token})
+                                         headers=[('Content-Type', 'application/octet-stream'),
+                                                  ('Content-Disposition', content_disposition(filename))],
+                                         cookies={'fileToken': token})
 
     @http.route('/web/binary/upload', type='http', auth="user")
     @serialize_exception
@@ -1179,7 +1205,7 @@ class Binary(http.Controller):
             }, request.context)
             args = {
                 'filename': ufile.filename,
-                'id':  attachment_id
+                'id': attachment_id
             }
         except Exception:
             args = {'error': "Something horrible happened"}
@@ -1228,8 +1254,8 @@ class Binary(http.Controller):
 
         return response
 
-class Action(http.Controller):
 
+class Action(http.Controller):
     @http.route('/web/action/load', type='json', auth="user")
     def load(self, action_id, do_not_eval=False, additional_context=None):
         Actions = request.session.model('ir.actions.actions')
@@ -1242,7 +1268,7 @@ class Action(http.Controller):
                 model, action_id = request.session.model('ir.model.data').get_object_reference(module, xmlid)
                 assert model.startswith('ir.actions.')
             except Exception:
-                action_id = 0   # force failed read
+                action_id = 0  # force failed read
 
         base_action = Actions.read([action_id], ['type'], request.context)
         if base_action:
@@ -1266,8 +1292,8 @@ class Action(http.Controller):
         else:
             return False
 
-class Export(http.Controller):
 
+class Export(http.Controller):
     @http.route('/web/export/formats', type='json', auth="user")
     def formats(self):
         """ Returns all valid export formats
@@ -1286,7 +1312,7 @@ class Export(http.Controller):
         return fields
 
     @http.route('/web/export/get_fields', type='json', auth="user")
-    def get_fields(self, model, prefix='', parent_name= '',
+    def get_fields(self, model, prefix='', parent_name='',
                    import_compat=True, parent_field_type=None,
                    exclude=None):
 
@@ -1301,7 +1327,7 @@ class Export(http.Controller):
             fields['.id'] = fields.pop('id', {'string': 'ID'})
 
         fields_sequence = sorted(fields.iteritems(),
-            key=lambda field: openerp.tools.ustr(field[1].get('string', '')))
+                                 key=lambda field: openerp.tools.ustr(field[1].get('string', '')))
 
         records = []
         for field_name, field in fields_sequence:
@@ -1316,7 +1342,7 @@ class Export(http.Controller):
             if not field.get('exportable', True):
                 continue
 
-            id = prefix + (prefix and '/'or '') + field_name
+            id = prefix + (prefix and '/' or '') + field_name
             name = parent_name + (parent_name and '/' or '') + field['string']
             record = {'id': id, 'string': name,
                       'value': id, 'children': False,
@@ -1349,7 +1375,7 @@ class Export(http.Controller):
         return [
             {'name': field['name'], 'label': fields_data[field['name']]}
             for field in export_fields_list
-        ]
+            ]
 
     def fields_info(self, model, export_fields):
         info = {}
@@ -1406,6 +1432,7 @@ class Export(http.Controller):
             (prefix + '/' + k, prefix_string + '/' + v)
             for k, v in self.fields_info(model, export_fields).iteritems())
 
+
 class ExportFormat(object):
     raw_data = False
 
@@ -1446,22 +1473,21 @@ class ExportFormat(object):
             fields = [field for field in fields if field['name'] != 'id']
 
         field_names = map(operator.itemgetter('name'), fields)
-        import_data = Model.export_data(ids, field_names, self.raw_data, context=context).get('datas',[])
+        import_data = Model.export_data(ids, field_names, self.raw_data, context=context).get('datas', [])
 
         if import_compat:
             columns_headers = field_names
         else:
             columns_headers = [val['label'].strip() for val in fields]
 
-
         return request.make_response(self.from_data(columns_headers, import_data),
-            headers=[('Content-Disposition',
-                            content_disposition(self.filename(model))),
-                     ('Content-Type', self.content_type)],
-            cookies={'fileToken': token})
+                                     headers=[('Content-Disposition',
+                                               content_disposition(self.filename(model))),
+                                              ('Content-Type', self.content_type)],
+                                     cookies={'fileToken': token})
+
 
 class CSVExport(ExportFormat, http.Controller):
-
     @http.route('/web/export/csv', type='http', auth="user")
     @serialize_exception
     def index(self, data, token):
@@ -1497,6 +1523,7 @@ class CSVExport(ExportFormat, http.Controller):
         fp.close()
         return data
 
+
 class ExcelExport(ExportFormat, http.Controller):
     # Excel needs raw data to correctly handle numbers and date values
     raw_data = True
@@ -1519,7 +1546,7 @@ class ExcelExport(ExportFormat, http.Controller):
 
         for i, fieldname in enumerate(fields):
             worksheet.write(0, i, fieldname)
-            worksheet.col(i).width = 8000 # around 220 pixels
+            worksheet.col(i).width = 8000  # around 220 pixels
 
         base_style = xlwt.easyxf('align: wrap yes')
         date_style = xlwt.easyxf('align: wrap yes', num_format_str='YYYY-MM-DD')
@@ -1542,6 +1569,7 @@ class ExcelExport(ExportFormat, http.Controller):
         data = fp.read()
         fp.close()
         return data
+
 
 class Reports(http.Controller):
     POLLING_DELAY = 0.25
@@ -1594,7 +1622,7 @@ class Reports(http.Controller):
         file_name = action.get('name', 'report')
         if 'name' not in action:
             reports = request.session.model('ir.actions.report.xml')
-            res_id = reports.search([('report_name', '=', action['report_name']),],
+            res_id = reports.search([('report_name', '=', action['report_name']), ],
                                     context=context)
             if len(res_id) > 0:
                 file_name = reports.read(res_id[0], ['name'], context)['name']
@@ -1603,11 +1631,12 @@ class Reports(http.Controller):
         file_name = '%s.%s' % (file_name, report_struct['format'])
 
         return request.make_response(report,
-             headers=[
-                 ('Content-Disposition', content_disposition(file_name)),
-                 ('Content-Type', report_mimetype),
-                 ('Content-Length', len(report))],
-             cookies={'fileToken': token})
+                                     headers=[
+                                         ('Content-Disposition', content_disposition(file_name)),
+                                         ('Content-Type', report_mimetype),
+                                         ('Content-Length', len(report))],
+                                     cookies={'fileToken': token})
+
 
 class Apps(http.Controller):
     @http.route('/apps/<app>', auth='user')
@@ -1616,7 +1645,9 @@ class Apps(http.Controller):
         ir_model_data = request.session.model('ir.model.data')
         try:
             action_id = ir_model_data.get_object_reference('base', 'open_module_tree')[1]
-            action = act_window_obj.read(action_id, ['name', 'type', 'res_model', 'view_mode', 'view_type', 'context', 'views', 'domain'])
+            action = act_window_obj.read(action_id,
+                                         ['name', 'type', 'res_model', 'view_mode', 'view_type', 'context', 'views',
+                                          'domain'])
             action['target'] = 'current'
         except ValueError:
             action = False
@@ -1634,294 +1665,285 @@ class Apps(http.Controller):
         debug = '?debug' if req.debug else ''
         return werkzeug.utils.redirect('/web{0}#sa={1}'.format(debug, sakey))
 
-
     _logger = logging.getLogger(__name__)
 
 
 class Home_tkobr(Home):
+    @http.route('/web/login', type='http', auth="none")
+    def web_login(self, redirect=None, **kw):
+        openerp.addons.web.controllers.main.ensure_db()
+        multi_ok = True
+        calendar_set = 0
+        calendar_ok = False
+        calendar_group = ''
+        unsuccessful_message = ''
+        now = datetime.now()
 
-        @http.route('/web/login', type='http', auth="none")
-        def web_login(self, redirect=None, **kw):
-            openerp.addons.web.controllers.main.ensure_db()
-            multi_ok = True
-            calendar_set = 0
-            calendar_ok = False
-            calendar_group = ''
-            unsuccessful_message = ''
-            now = datetime.now()
+        if request.httprequest.method == 'GET' and redirect and request.session.uid:
+            return http.redirect_with_hash(redirect)
 
-            if request.httprequest.method == 'GET' and redirect and request.session.uid:
-                return http.redirect_with_hash(redirect)
+        if not request.uid:
+            request.uid = openerp.SUPERUSER_ID
 
-            if not request.uid:
-                request.uid = openerp.SUPERUSER_ID
+        values = request.params.copy()
+        if not redirect:
+            redirect = '/web?' + request.httprequest.query_string
+        values['redirect'] = redirect
 
-            values = request.params.copy()
-            if not redirect:
-                redirect = '/web?' + request.httprequest.query_string
-            values['redirect'] = redirect
+        try:
+            values['databases'] = http.db_list()
+        except openerp.exceptions.AccessDenied:
+            values['databases'] = None
 
-            try:
-                values['databases'] = http.db_list()
-            except openerp.exceptions.AccessDenied:
-                values['databases'] = None
+        if request.httprequest.method == 'POST':
+            old_uid = request.uid
+            uid = False
+            if 'login' in request.params and 'password' in request.params:
+                uid = request.session.authenticate(request.session.db, request.params[
+                    'login'], request.params['password'])
+            if uid is not False:
+                user = request.registry.get('res.users').browse(
+                    request.cr, request.uid, uid, request.context)
+                # if not uid is SUPERUSER_ID:
+                # check for multiple sessions block
+                sessions = request.registry.get('ir.sessions').search(
+                    request.cr, request.uid, [
+                        ('user_id', '=', uid), ('logged_in', '=', True)], context=request.context)
 
-            if request.httprequest.method == 'POST':
-                old_uid = request.uid
-                uid = False
-                if 'login' in request.params and 'password' in request.params:
-                    uid = request.session.authenticate(request.session.db, request.params[
-                        'login'], request.params['password'])
-                if uid is not False:
-                    user = request.registry.get('res.users').browse(
-                        request.cr, request.uid, uid, request.context)
-                    # if not uid is SUPERUSER_ID:
-                    # check for multiple sessions block
-                    sessions = request.registry.get('ir.sessions').search(
-                        request.cr, request.uid, [
-                            ('user_id', '=', uid), ('logged_in', '=', True)], context=request.context)
+                if sessions and user.multiple_sessions_block:
+                    multi_ok = False
 
-                    if sessions and user.multiple_sessions_block:
-                        multi_ok = False
+                    # *********************************comprobacion de la direcion IP (inicio)*********************************************************************
+                ip_check = True
+                #                    //*** cosas con IP Rolo
+                user_ips_with_mask = user.allowed_ip_address
+                # direccion ip del request
+                ip_address = IPAddress(request.httprequest.remote_addr)
+                if user_ips_with_mask and user_ips_with_mask.strip():
+                    # -- hay cosas seteadas asi que verificar
+                    ip_check = self._check_ip_address_match(ip_address, user_ips_with_mask)
+                else:
+                    # los grupos
+                    print " -- chequea las del grupos"
+                    march_some = False
+                    count_group_check = 0
+                    for group in user.groups_id:
+                        group_ips_with_mask = group.allowed_ip_address
+                        if group_ips_with_mask and group_ips_with_mask.strip():
+                            march_some = self._check_ip_address_match(ip_address, group_ips_with_mask.strip())
+                            count_group_check += 1
 
-                        # *********************************comprobacion de la direcion IP (inicio)*********************************************************************
-                    ip_check = True
-                    #                    //*** cosas con IP Rolo
-                    user_ips_with_mask = user.allowed_ip_address
-                    # direccion ip del request
-                    ip_address = IPAddress(request.httprequest.remote_addr)
-                    if user_ips_with_mask and user_ips_with_mask.strip():
-                        # -- hay cosas seteadas asi que verificar
-                        ip_check = self._check_ip_address_match(ip_address, user_ips_with_mask)
+                        if march_some:
+                            break
+                    ip_check = march_some if count_group_check > 0  else True
+
+                    # d ip_check  puesto adcional por Rolo
+                if not ip_check:
+                    unsuccessful_message = "unsuccessful login from '%s', IP Address not allowed" % (
+                        request.params['login'])
+
+                    # *********************************comprobacion de la direcion IP (Fin)*********************************************************************
+
+
+                    # *********************************comprobacion de la direcion MAC (inicio)*********************************************************************
+                mac_check = False
+                user_mac_address = user.allowed_mac_address
+                # direccion mac enviada desde el navegador
+                mac_address_request = request.httprequest.params('remote_mac')
+                if user_mac_address != None and user_mac_address != False:
+                    if mac_address_request in user_mac_address.split(','):
+                        mac_check = True
                     else:
                         # los grupos
-                        print " -- chequea las del grupos"
-                        march_some = False
-                        count_group_check = 0
                         for group in user.groups_id:
-                            group_ips_with_mask = group.allowed_ip_address
-                            if group_ips_with_mask and group_ips_with_mask.strip():
-                                march_some = self._check_ip_address_match(ip_address, group_ips_with_mask.strip())
-                                count_group_check += 1
-
-                            if march_some:
-                                break
-                        ip_check = march_some if count_group_check > 0  else True
-
-                        # d ip_check  puesto adcional por Rolo
-                    if not ip_check:
-                        unsuccessful_message = "unsuccessful login from '%s', IP Address not allowed" % (
-                            request.params['login'])
-
-                        # *********************************comprobacion de la direcion IP (Fin)*********************************************************************
-
-
-                        # *********************************comprobacion de la direcion MAC (inicio)*********************************************************************
-                    mac_check = False
-                    user_mac_address = user.allowed_mac_address
-                    # direccion mac enviada desde el navegador
-                    mac_address_request = request.httprequest.params('remote_mac')
-                    if user_mac_address != None and user_mac_address != False:
-                        if mac_address_request in user_mac_address.split(','):
-                            mac_check = True
-                        else:
-                            # los grupos
-                            for group in user.groups_id:
-                                group_mac_address = group.allowed_mac_address
-                                if group_mac_address != None and group_mac_address != False:
-                                    if mac_address_request in group_mac_address.split(','):
-                                        mac_check = True
-                                        break
-                    else:
-                        mac_check = True
-
-                    if not mac_check:
-                        unsuccessful_message = "unsuccessful login from '%s', MAC Address not allowed" % (
-                            request.params['login'])
-
-                        # *********************************comprobacion de la direcion MAC (Fin)*********************************************************************
-
-                    if ip_check and multi_ok and (not uid is SUPERUSER_ID) and mac_check:
-                        # check calendars
-                        calendar_obj = request.registry.get(
-                            'resource.calendar')
-                        attendance_obj = request.registry.get(
-                            'resource.calendar.attendance')
-
-                        # GET USER LOCAL TIME
-                        if user.tz:
-                            tz = pytz.timezone(user.tz)
-                        else:
-                            tz = pytz.timezone('GMT')
-                        tzoffset = tz.utcoffset(now)
-                        now = now + tzoffset
-
-                        if user.login_calendar_id:
-                            calendar_set += 1
-                            # check user calendar
-                            attendances = attendance_obj.search(request.cr,
-                                                                request.uid,
-                                                                [('calendar_id', '=', user.login_calendar_id.id),
-                                                                 ('dayofweek', '=', str(now.weekday())),
-                                                                 ('hour_from', '<=', now.hour + now.minute / 60.0),
-                                                                 ('hour_to', '>=', now.hour + now.minute / 60.0)],
-                                                                context=request.context)
-                            if attendances:
-                                calendar_ok = True
-                            else:
-                                unsuccessful_message = "unsuccessful login from '%s', user time out of allowed calendar defined in user " % \
-                                                       request.params[
-                                                           'login']
-                        else:
-                            # check user groups calendar
-                            for group in user.groups_id:
-                                if group.login_calendar_id:
-                                    calendar_set += 1
-                                    attendances = attendance_obj.search(request.cr,
-                                                                        request.uid, [('calendar_id', '=',
-                                                                                       group.login_calendar_id.id),
-                                                                                      ('dayofweek', '=',
-                                                                                       str(now.weekday())),
-                                                                                      ('hour_from', '<=',
-                                                                                       now.hour + now.minute / 60.0),
-                                                                                      ('hour_to', '>=',
-                                                                                       now.hour + now.minute / 60.0)],
-                                                                        context=request.context)
-                                    if attendances:
-                                        calendar_ok = True
-                                    else:
-                                        calendar_group = group.name
-                                if sessions and group.multiple_sessions_block and multi_ok:
-                                    multi_ok = False
-                                    unsuccessful_message = "unsuccessful login from '%s', multisessions block defined in group '%s'" % (
-                                        request.params['login'], group.name)
+                            group_mac_address = group.allowed_mac_address
+                            if group_mac_address != None and group_mac_address != False:
+                                if mac_address_request in group_mac_address.split(','):
+                                    mac_check = True
                                     break
-                            if calendar_set > 0 and calendar_ok == False:
-                                unsuccessful_message = "unsuccessful login from '%s', user time out of allowed calendar defined in group '%s'" % (
-                                    request.params['login'], calendar_group)
+                else:
+                    mac_check = True
+
+                if not mac_check:
+                    unsuccessful_message = "unsuccessful login from '%s', MAC Address not allowed" % (
+                        request.params['login'])
+
+                    # *********************************comprobacion de la direcion MAC (Fin)*********************************************************************
+
+                if ip_check and multi_ok and (not uid is SUPERUSER_ID) and mac_check:
+                    # check calendars
+                    calendar_obj = request.registry.get(
+                        'resource.calendar')
+                    attendance_obj = request.registry.get(
+                        'resource.calendar.attendance')
+
+                    # GET USER LOCAL TIME
+                    if user.tz:
+                        tz = pytz.timezone(user.tz)
                     else:
-                        if not unsuccessful_message:
-                            unsuccessful_message = "unsuccessful login from '%s', multisessions block defined in user" % \
+                        tz = pytz.timezone('GMT')
+                    tzoffset = tz.utcoffset(now)
+                    now = now + tzoffset
+
+                    if user.login_calendar_id:
+                        calendar_set += 1
+                        # check user calendar
+                        attendances = attendance_obj.search(request.cr,
+                                                            request.uid,
+                                                            [('calendar_id', '=', user.login_calendar_id.id),
+                                                             ('dayofweek', '=', str(now.weekday())),
+                                                             ('hour_from', '<=', now.hour + now.minute / 60.0),
+                                                             ('hour_to', '>=', now.hour + now.minute / 60.0)],
+                                                            context=request.context)
+                        if attendances:
+                            calendar_ok = True
+                        else:
+                            unsuccessful_message = "unsuccessful login from '%s', user time out of allowed calendar defined in user " % \
                                                    request.params[
                                                        'login']
+                    else:
+                        # check user groups calendar
+                        for group in user.groups_id:
+                            if group.login_calendar_id:
+                                calendar_set += 1
+                                attendances = attendance_obj.search(request.cr,
+                                                                    request.uid, [('calendar_id', '=',
+                                                                                   group.login_calendar_id.id),
+                                                                                  ('dayofweek', '=',
+                                                                                   str(now.weekday())),
+                                                                                  ('hour_from', '<=',
+                                                                                   now.hour + now.minute / 60.0),
+                                                                                  ('hour_to', '>=',
+                                                                                   now.hour + now.minute / 60.0)],
+                                                                    context=request.context)
+                                if attendances:
+                                    calendar_ok = True
+                                else:
+                                    calendar_group = group.name
+                            if sessions and group.multiple_sessions_block and multi_ok:
+                                multi_ok = False
+                                unsuccessful_message = "unsuccessful login from '%s', multisessions block defined in group '%s'" % (
+                                    request.params['login'], group.name)
+                                break
+                        if calendar_set > 0 and calendar_ok == False:
+                            unsuccessful_message = "unsuccessful login from '%s', user time out of allowed calendar defined in group '%s'" % (
+                                request.params['login'], calendar_group)
                 else:
-                    unsuccessful_message = "unsuccessful login from '%s', wrong username or password" % request.params[
-                        'login']
-                # ip_check added by Rolo
-                if not unsuccessful_message or (uid is SUPERUSER_ID and ip_check):
-                    self.save_session(
-                        request.cr,
-                        uid,
-                        user.tz,
-                        request.httprequest.session.sid,
-                        context=request.context)
-                    return http.redirect_with_hash(redirect)
-                user = request.registry.get('res.users').browse(
-                    request.cr, SUPERUSER_ID, SUPERUSER_ID, request.context)
+                    if not unsuccessful_message:
+                        unsuccessful_message = "unsuccessful login from '%s', multisessions block defined in user" % \
+                                               request.params[
+                                                   'login']
+            else:
+                unsuccessful_message = "unsuccessful login from '%s', wrong username or password" % request.params[
+                    'login']
+            # ip_check added by Rolo
+            if not unsuccessful_message or (uid is SUPERUSER_ID and ip_check):
                 self.save_session(
                     request.cr,
                     uid,
                     user.tz,
                     request.httprequest.session.sid,
-                    unsuccessful_message,
-                    request.context)
-                _logger.error(unsuccessful_message)
-                request.uid = old_uid
-                values['error'] = 'Login failed due to one of the following reasons:'
-                values['reason1'] = '- Wrong login/password'
-                values['reason2'] = '- User not allowed to have multiple logins'
-                values[
-                    'reason3'] = '- User not allowed to login at this specific time or day or From Specific IP Address or From Specific MAC Address'
-            return request.render('web.login', values)
-
-        def _check_ip_address_match(self, ip_address, matches_mask):
-
-            match_some = False
-            list_to_check = matches_mask.split(',')
-            if list_to_check:
-                for ip_and_mask in list_to_check:
-                    if ip_and_mask == 'localhost':
-                        ip_and_mask = '127.0.0.1'
-                    if ip_address in IPNetwork(ip_and_mask):
-                        match_some = True
-                        break
-
-            return match_some;
-
-        def save_session(
-                self,
-                cr,
-                uid,
-                tz,
-                sid,
-                unsuccessful_message='',
-                context=None):
-            now = fields.datetime.now()
-            session_obj = request.registry.get('ir.sessions')
-            cr = request.registry.cursor()
-
-            # for GeoIP
-            geo_ip_resolver = None
-            ip_location = ""
-
-            try:
-                import GeoIP
-                geo_ip_resolver = GeoIP.open(
-                    '/usr/share/GeoIP/GeoIP.dat',
-                    GeoIP.GEOIP_STANDARD)
-            except ImportError:
-                geo_ip_resolver = False
-            if geo_ip_resolver:
-                ip_location = (str(geo_ip_resolver.country_name_by_addr(
-                    request.httprequest.remote_addr)) or "")
-
-            # autocommit: our single update request will be performed atomically.
-            # (In this way, there is no opportunity to have two transactions
-            # interleaving their cr.execute()..cr.commit() calls and have one
-            # of them rolled back due to a concurrent access.)
-            cr.autocommit(True)
+                    context=request.context)
+                return http.redirect_with_hash(redirect)
             user = request.registry.get('res.users').browse(
-                cr, request.uid, uid, request.context)
-            ip = request.httprequest.headers.environ['REMOTE_ADDR']
-            logged_in = True
-            if unsuccessful_message:
-                uid = SUPERUSER_ID
-                logged_in = False
-                sessions = False
-            else:
-                sessions = session_obj.search(cr, uid, [('session_id', '=', sid),
-                                                        ('ip', '=', ip),
-                                                        ('user_id', '=', uid),
-                                                        ('logged_in', '=', True)],
-                                              context=context)
-            if not sessions:
-                values = {
-                    'user_id': uid,
-                    'logged_in': logged_in,
-                    'session_id': sid,
-                    'session_seconds': user.session_default_seconds,
-                    'multiple_sessions_block': user.multiple_sessions_block,
-                    'date_login': now,
-                    'expiration_date': datetime.strftime(
-                        (datetime.strptime(
-                            now,
-                            DEFAULT_SERVER_DATETIME_FORMAT) +
-                         relativedelta(
-                             seconds=user.session_default_seconds)),
-                        DEFAULT_SERVER_DATETIME_FORMAT),
-                    'ip': ip,
-                    'ip_location': ip_location,
-                    'remote_tz': tz or 'GMT',
-                    'unsuccessful_message': unsuccessful_message,
-                }
-                session_obj.create(cr, uid, values, context=context)
-                cr.commit()
-            cr.close()
-            return True
+                request.cr, SUPERUSER_ID, SUPERUSER_ID, request.context)
+            self.save_session(
+                request.cr,
+                uid,
+                user.tz,
+                request.httprequest.session.sid,
+                unsuccessful_message,
+                request.context)
+            _logger.error(unsuccessful_message)
+            request.uid = old_uid
+            values['error'] = 'Login failed due to one of the following reasons:'
+            values['reason1'] = '- Wrong login/password'
+            values['reason2'] = '- User not allowed to have multiple logins'
+            values[
+                'reason3'] = '- User not allowed to login at this specific time or day or From Specific IP Address or From Specific MAC Address'
+        return request.render('web.login', values)
 
-        @http.route('/web/session/logout', type='http', auth="none")
-        def logout(self, redirect='/web'):
-            request.session.logout(keep_db=True, logout_type='ul')
-            return werkzeug.utils.redirect(redirect, 303)
+    def _check_ip_address_match(self, ip_address, matches_mask):
+
+        match_some = False
+        list_to_check = matches_mask.split(',')
+        if list_to_check:
+            for ip_and_mask in list_to_check:
+                if ip_and_mask == 'localhost':
+                    ip_and_mask = '127.0.0.1'
+                if ip_address in IPNetwork(ip_and_mask):
+                    match_some = True
+                    break
+
+        return match_some;
+
+    def save_session(self, cr, uid, tz, sid, unsuccessful_message='', context=None):
+        now = fields.datetime.now()
+        session_obj = request.registry.get('ir.sessions')
+        cr = request.registry.cursor()
+
+        # for GeoIP
+        geo_ip_resolver = None
+        ip_location = ""
+
+        try:
+            import GeoIP
+            geo_ip_resolver = GeoIP.open(
+                '/usr/share/GeoIP/GeoIP.dat',
+                GeoIP.GEOIP_STANDARD)
+        except ImportError:
+            geo_ip_resolver = False
+        if geo_ip_resolver:
+            ip_location = (str(geo_ip_resolver.country_name_by_addr(
+                request.httprequest.remote_addr)) or "")
+
+        # autocommit: our single update request will be performed atomically.
+        # (In this way, there is no opportunity to have two transactions
+        # interleaving their cr.execute()..cr.commit() calls and have one
+        # of them rolled back due to a concurrent access.)
+        cr.autocommit(True)
+        user = request.registry.get('res.users').browse(
+            cr, request.uid, uid, request.context)
+        ip = request.httprequest.headers.environ['REMOTE_ADDR']
+        logged_in = True
+        if unsuccessful_message:
+            uid = SUPERUSER_ID
+            logged_in = False
+            sessions = False
+        else:
+            sessions = session_obj.search(cr, uid, [('session_id', '=', sid),
+                                                    ('ip', '=', ip),
+                                                    ('user_id', '=', uid),
+                                                    ('logged_in', '=', True)],
+                                          context=context)
+        if not sessions:
+            values = {
+                'user_id': uid,
+                'logged_in': logged_in,
+                'session_id': sid,
+                'session_seconds': user.session_default_seconds,
+                'multiple_sessions_block': user.multiple_sessions_block,
+                'date_login': now,
+                'expiration_date': datetime.strftime(
+                    (datetime.strptime(
+                        now,
+                        DEFAULT_SERVER_DATETIME_FORMAT) +
+                     relativedelta(
+                         seconds=user.session_default_seconds)),
+                    DEFAULT_SERVER_DATETIME_FORMAT),
+                'ip': ip,
+                'ip_location': ip_location,
+                'remote_tz': tz or 'GMT',
+                'unsuccessful_message': unsuccessful_message,
+            }
+            session_obj.create(cr, uid, values, context=context)
+            cr.commit()
+        cr.close()
+        return True
+
+    @http.route('/web/session/logout', type='http', auth="none")
+    def logout(self, redirect='/web'):
+        request.session.logout(keep_db=True, logout_type='ul')
+        return werkzeug.utils.redirect(redirect, 303)
 
 # vim:expandtab:tabstop=4:softtabstop=4:shiftwidth=4:
