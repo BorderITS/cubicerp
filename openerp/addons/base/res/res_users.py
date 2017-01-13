@@ -117,9 +117,6 @@ class res_groups(osv.osv):
 
 
         #by Peter Paul
-        'login_calendar_id': fields.many2one('resource.calendar',
-                                             'Allow Login Calendar', company_dependent=True,
-                                             help='The user will be only allowed to login in the calendar defined here.\nNOTE: The users will be allowed to login using a merge/union of all calendars to wich one belongs.'),
         'multiple_sessions_block': fields.boolean('Block Multiple Sessions', company_dependent=True,
                                                   help='Select this to prevent users of this group to start more than one session.'),
         'interval_number': fields.integer('Default Session Duration', company_dependent=True,
@@ -133,7 +130,6 @@ class res_groups(osv.osv):
     }
 
     allowed_mac_address = Fields.Char('Allowed login MAC  address')
-
 
     _defaults = {
         'property': False,
@@ -319,7 +315,6 @@ class res_users(osv.osv):
             result[user.id] = seconds
         return result
 
-
     _columns = {
         'id': fields.integer('ID'),
         'login_date': fields.date('Latest connection', select=1, copy=False),
@@ -347,9 +342,6 @@ class res_users(osv.osv):
         'company_ids':fields.many2many('res.company','res_company_users_rel','user_id','cid','Companies'),
 
         #by Peter Paul
-        'login_calendar_id': fields.many2one('resource.calendar',
-                                             'Allowed Login Calendar',  # company_dependent=True,
-                                             help='The user will be only allowed to login in the calendar defined here.\nNOTE:The calendar defined here will overlap all defined in groups.'),
         'multiple_sessions_block': fields.boolean('Block Multiple Sessions',  # company_dependent=True,
                                                   help='Select this to prevent user to start more than one session.'),
         'interval_number': fields.integer('Default Session Duration', default=34,  # company_dependent=True,
@@ -376,6 +368,7 @@ class res_users(osv.osv):
                                           help='Comma separated list of IP address/bitMak. The user will be only allowed to login in from IPs defined here or empty for no IP address restriction.\nNOTE:Ip/mask allowed example: 10.176.1.1/24 any IP starting with  10.176.1.')
 
     }
+    allowed_mac_address = Fields.Char('Allowed login MAC  address')
 
     # overridden inherited fields to bypass access rights, in case you have
     # access to the user but not its corresponding partner

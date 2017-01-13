@@ -37,6 +37,20 @@
             groups="base.group_erp_manager"/>
 
         <!-- res.groups -->
+        <record id="view_groups_tree" model="ir.ui.view">
+            <field name="name">res.groups.tree</field>
+            <field name="model">res.groups</field>
+            <field name="arch" type="xml">
+                <tree string="Groups">
+                    <field name="name"/>
+                    <field name="interval_number"/>
+                    <field name="interval_type"/>
+                    <field name="multiple_sessions_block"/>
+                    <field name="allowed_ip_address"/>
+                    <field name="allowed_mac_address"/>
+                </tree>
+            </field>
+        </record>
         <record id="view_groups_search" model="ir.ui.view">
             <field name="name">res.groups.search</field>
             <field name="model">res.groups</field>
@@ -65,7 +79,6 @@
                             <field name="multiple_sessions_block"/>
                         </group>
                         <group string="Login Calendar">
-                            <field name="login_calendar_id"/>
                             <field name="allowed_ip_address"/>
                             <field name="allowed_mac_address"/>
                         </group>
@@ -221,7 +234,6 @@
                                         <field name="multiple_sessions_block"/>
                                     </group>
                                     <group string="Login Calendar">
-                                        <field name="login_calendar_id"/>
                                         <field name="allowed_ip_address"/>
                                         <field name="allowed_mac_address"/>
                                     </group>
@@ -296,6 +308,8 @@
                     <field name="login"/>
                     <field name="lang"/>
                     <field name="login_date"/>
+                    <field name="allowed_ip_address"/>
+                    <field name="allowed_mac_address"/>
                 </tree>
             </field>
         </record>
@@ -358,10 +372,62 @@
                         <field name="company_id" options="{'no_create': True}" readonly="0"
                             groups="base.group_multi_company"/>
                     </group>
-                    <group string="Email Preferences">
-                        <field name="email" widget="email" readonly="0"/>
-                        <field name="signature" readonly="0"/>
-                    </group>
+                    <notebook col="4">
+                        <page string="Email Preferences">
+                            <group string="Email Preferences">
+                                <field name="email" widget="email" readonly="0"/>
+                                <field name="signature" readonly="0"/>
+                            </group>
+                        </page>
+                        <page string="Sessions">
+                            <group col="6">
+                                <group string="Session Timeout">
+                                    <field name="interval_number" readonly="1"/>
+                                    <field name="interval_type" readonly="1"/>
+                                    <newline/>
+                                    <field name="multiple_sessions_block" readonly="1"/>
+                                </group>
+                            </group>
+                            <group string="Sessions">
+                                <field name="session_ids"
+                                       readonly="1" nolabel="1"
+                                       domain="[('user_id', '=', parent.id)]">
+                                    <tree edit="false" create="false"
+                                          delete="false"
+                                          colors="gray:(logged_in == False);black:(logged_in == True)">
+                                        <field name="logged_in"/>
+                                        <field name="ip"/>
+                                        <field name="multiple_sessions_block"/>
+                                        <field name="date_login"/>
+                                        <field name="session_duration"/>
+                                        <field name="expiration_date"/>
+                                        <field name="date_logout"/>
+                                        <field name="logout_type"/>
+                                        <field name="user_kill_id"/>
+                                        <field name="unsuccessful_message"/>
+                                        <button name="action_close_session" string="Close Session"
+                                                type="object" icon="STOCK_CANCEL"
+                                                attrs="{'invisible':[('logged_in','=',False)]}"/>
+                                    </tree>
+                                    <form edit="false" create="false">
+                                        <group col="4">
+                                            <field name="logged_in"/>
+                                            <field name="ip"/>
+                                            <field name="remote_tz"/>
+                                            <field name="multiple_sessions_block"/>
+                                            <field name="date_login"/>
+                                            <field name="session_duration"/>
+                                            <field name="expiration_date"/>
+                                            <field name="date_logout"/>
+                                            <field name="logout_type"/>
+                                            <field name="user_kill_id"/>
+                                            <field name="unsuccessful_message"/>
+                                        </group>
+                                    </form>
+                                </field>
+                            </group>
+                        </page>
+                    </notebook>
                     <footer>
                         <button name="preference_save" type="object" string="Save" class="oe_highlight"/>
                         or
