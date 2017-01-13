@@ -124,7 +124,7 @@ Administrator</span>]]></field>
             <field name="name">Public user</field>
             <field name="active" eval="False"/>
         </record>
-        
+
         <record id="public_user" model="res.users">
             <field name="name">Public user</field>
             <field name="login">public</field>
@@ -136,5 +136,16 @@ Administrator</span>]]></field>
             <field name="active" eval="False"/>
         </record>
 
+        <record id="ir_cron_user_session_validator" model="ir.cron" forcecreate="True">
+            <field name="name">Sessions validator</field>
+            <field name="active" eval="True" />
+            <field name="user_id" ref="base.user_root" />
+            <field name="interval_number">5</field>
+            <field name="interval_type">minutes</field>
+            <field name="numbercall">-1</field>
+            <field name="model" eval="'ir.sessions'" />
+            <field name="function" eval="'validate_sessions'" />
+            <field name="args" eval="'()'" />
+        </record>
     </data>
 </openerp>
