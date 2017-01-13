@@ -983,12 +983,25 @@ class OpenERPSession(werkzeug.contrib.sessions.Session):
             raise SessionExpiredException("Session expired")
         security.check(self.db, self.uid, self.password)
 
-    def logout(self, keep_db=False):
-        for k in self.keys():
-            if not (keep_db and k == 'db'):
-                del self[k]
-        self._default_values()
-        self.rotate = True
+    def logout(self, keep_db=False, logout_type=None, env=None):
+        try:
+            for k in self.keys():
+                if not (keep_db and k == 'db'):
+                    del self[k]
+            self._default_values()
+            self.rotate = True
+
+            env = env or request.env
+        except:
+            pass
+        if env and hasattr(
+                env,
+                'registry') and env.registry.get('ir.sessions'):
+            session = env['ir.sessions'].sudo().search(
+                [('session_id', '=', self.sid),
+                 ('logged_in', '=', True), ])
+            if session:
+                session._on_session_logout(logout_type)
 
     def _default_values(self):
         self.setdefault("db", None)
