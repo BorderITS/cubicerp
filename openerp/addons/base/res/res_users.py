@@ -35,7 +35,15 @@ from openerp import api
 from openerp.osv import fields, osv, expression
 from openerp.service.security import check_super
 from openerp.tools.translate import _
+
+#by Peter Paul
+from openerp import fields as Fields
 from openerp.http import request
+from openerp.http import root
+from datetime import datetime
+from openerp.tools import DEFAULT_SERVER_DATETIME_FORMAT
+from openerp.addons.base.ir.ir_cron import _intervalTypes
+from dateutil.relativedelta import *
 
 _logger = logging.getLogger(__name__)
 
@@ -106,9 +114,34 @@ class res_groups(osv.osv):
         'category_id': fields.many2one('ir.module.category', 'Application', select=True),
         'full_name': fields.function(_get_full_name, type='char', string='Group Name', fnct_search=_search_group),
         'property': fields.boolean('Property Group', help="This group is used on the property fields"),
+
+
+        #by Peter Paul
+        'login_calendar_id': fields.many2one('resource.calendar',
+                                             'Allow Login Calendar', company_dependent=True,
+                                             help='The user will be only allowed to login in the calendar defined here.\nNOTE: The users will be allowed to login using a merge/union of all calendars to wich one belongs.'),
+        'multiple_sessions_block': fields.boolean('Block Multiple Sessions', company_dependent=True,
+                                                  help='Select this to prevent users of this group to start more than one session.'),
+        'interval_number': fields.integer('Default Session Duration', company_dependent=True,
+                                          help='This define the timeout for the users of this group.\nNOTE: The system will get the lowest timeout of all user groups.'),
+        'interval_type': fields.selection([('minutes', 'Minutes'),
+                                           ('hours', 'Hours'), ('work_days', 'Work Days'),
+                                           ('days', 'Days'), ('weeks', 'Weeks'), ('months', 'Months')],
+                                          'Interval Unit', company_dependent=True),
+        'allowed_ip_address': fields.char(string='Allowed login IP  address',
+                                          help='Comma separated list of IP address/bitMak. The user will be only allowed to login in from IPs defined here or empty for no IP address restriction.\nNOTE:Ip/mask allowed example: 10.176.1.1/24 any IP starting with  10.176.1.')
     }
+
+    allowed_mac_address = Fields.Char('Allowed login MAC  address')
+
+
     _defaults = {
         'property': False,
+
+        # by Peter Paul
+        'multiple_sessions_block': True,
+        'interval_type': 'minutes',
+        'interval_number': 35
     }
 
     _sql_constraints = [
@@ -183,6 +216,110 @@ class res_users(osv.osv):
     def _get_password(self, cr, uid, ids, arg, karg, context=None):
         return dict.fromkeys(ids, '')
 
+    def _check_session_validity(self, db, uid, passwd):
+        if not request:
+            return
+        now = fields.datetime.now()
+        session = request.session
+        session_store = root.session_store
+
+        if session.db and session.uid:
+            session_obj = request.registry.get('ir.sessions')
+            cr = self.pool.cursor()
+            # autocommit: our single update request will be performed atomically.
+            # (In this way, there is no opportunity to have two transactions
+            # interleaving their cr.execute()..cr.commit() calls and have one
+            # of them rolled back due to a concurrent access.)
+            cr.autocommit(True)
+            session_ids = session_obj.search(cr, uid,
+                                             [('session_id', '=', session.sid),
+                                              ('expiration_date', '>', now),
+                                                 ('logged_in', '=', True)],
+                                             order='expiration_date asc',
+                                             context=request.context)
+            if session_ids:
+                if request.httprequest.path[:5] == '/web/' or \
+                   request.httprequest.path[:9] == '/im_chat/':
+                    open_sessions = session_obj.read(cr, uid,
+                                                     session_ids, ['logged_in',
+                                                                   'date_login',
+                                                                   'session_seconds',
+                                                                   'expiration_date'],
+                                                     context=request.context)
+                    for s in open_sessions:
+                        seconds = s['session_seconds']
+                        session_obj.write(
+                            cr,
+                            uid,
+                            s['id'],
+                            {
+                                'expiration_date': datetime.strftime(
+                                    (datetime.strptime(
+                                        now,
+                                        DEFAULT_SERVER_DATETIME_FORMAT) +
+                                        relativedelta(
+                                        seconds=seconds)),
+                                    DEFAULT_SERVER_DATETIME_FORMAT),
+                                'session_duration': str(
+                                    datetime.strptime(
+                                        now,
+                                        DEFAULT_SERVER_DATETIME_FORMAT) -
+                                    datetime.strptime(
+                                        s['date_login'],
+                                        DEFAULT_SERVER_DATETIME_FORMAT)),
+                            },
+                            context=request.context)
+                    cr.commit()
+            else:
+                session.logout(logout_type='to', keep_db=True)
+            cr.close()
+        return True
+
+    def check(self, db, uid, passwd):
+        res = super(res_users, self).check(db, uid, passwd)
+        self._check_session_validity(db, uid, passwd)
+        return res
+
+    def _get_groups(self, cr, uid, ids, context=None):
+        result = set()
+        objs = self.pool['res.groups']
+        for obj in objs.browse(cr, uid, ids, context=context):
+            for user in obj.users:
+                result.add(user.id)
+        return list(result)
+
+    def _get_session_default_seconds(
+            self, cr, uid, ids, name, arg={}, context={}):
+        result = {}
+        now = datetime.now()
+        seconds = (now + _intervalTypes['weeks'](1) - now).total_seconds()
+        for id in ids:
+            user = self.browse(cr, uid, id, context=context)
+            if user.interval_number and user.interval_type:
+                u_seconds = (
+                    now +
+                    _intervalTypes[
+                        user.interval_type](
+                        user.interval_number) -
+                    now).total_seconds()
+                if u_seconds < seconds:
+                    seconds = u_seconds
+            else:
+                # Get lowest session time
+                for group in user.groups_id:
+                    if group.interval_number and group.interval_type:
+                        g_seconds = (
+                            now +
+                            _intervalTypes[
+                                group.interval_type](
+                                group.interval_number) -
+                            now).total_seconds()
+                        if g_seconds < seconds:
+                            seconds = g_seconds
+            result[user.id] = seconds
+        return result
+
+
     _columns = {
         'id': fields.integer('ID'),
         'login_date': fields.date('Latest connection', select=1, copy=False),
@@ -208,6 +345,36 @@ class res_users(osv.osv):
         'company_id': fields.many2one('res.company', 'Company', required=True,
             help='The company this user is currently working for.', context={'user_preference': True}),
         'company_ids':fields.many2many('res.company','res_company_users_rel','user_id','cid','Companies'),
+
+        #by Peter Paul
+        'login_calendar_id': fields.many2one('resource.calendar',
+                                             'Allowed Login Calendar',  # company_dependent=True,
+                                             help='The user will be only allowed to login in the calendar defined here.\nNOTE:The calendar defined here will overlap all defined in groups.'),
+        'multiple_sessions_block': fields.boolean('Block Multiple Sessions',  # company_dependent=True,
+                                                  help='Select this to prevent user to start more than one session.'),
+        'interval_number': fields.integer('Default Session Duration', default=34,  # company_dependent=True,
+                                          help='This is the timeout for this user.\nNOTE: The timeout defined here will overlap all the timeouts defined in groups.'),
+        'interval_type': fields.selection([('minutes', 'Minutes'),
+                                           ('hours', 'Hours'), ('work_days', 'Work Days'),
+                                           ('days', 'Days'), ('weeks', 'Weeks'), ('months', 'Months')],
+                                          'Interval Unit',  # company_dependent=True
+                                          ),
+        'session_default_seconds': fields.function(_get_session_default_seconds,
+                                                   method=True, string='Session Seconds', type='integer',
+                                                   store={
+                                                       'res.users': (
+                                                           lambda self, cr, uid, ids, c={}: ids,
+                                                           ['interval_number', 'interval_type'],
+                                                           10),
+                                                       'res.groups': (_get_groups,
+                                                                      ['interval_number', 'interval_type'],
+                                                                      10),
+                                                   }),
+        'session_ids': fields.one2many('ir.sessions', 'user_id', 'User Sessions'),
+        'ip': fields.char(related='session_ids.ip', string='Latest ip adress'),
+        'allowed_ip_address': fields.char(string='Allowed login IP  address',
+                                          help='Comma separated list of IP address/bitMak. The user will be only allowed to login in from IPs defined here or empty for no IP address restriction.\nNOTE:Ip/mask allowed example: 10.176.1.1/24 any IP starting with  10.176.1.')
+
     }
 
     # overridden inherited fields to bypass access rights, in case you have
@@ -294,6 +461,11 @@ class res_users(osv.osv):
         'company_ids': _get_companies,
         'groups_id': _get_group,
         'image': _get_default_image,
+
+        # by Peter Paul
+        'multiple_sessions_block': True,
+        'interval_type': 'minutes',
+        'interval_number': 35
     }
 
     # User can write on a few of his own fields (but not his groups for example)

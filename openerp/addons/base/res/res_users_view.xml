@@ -57,6 +57,19 @@
                         <field name="name"/>
                         <field name="property"/>
                     </group>
+                    <group col="6">
+                        <group string="Session Timeout">
+                            <field name="interval_number"/>
+                            <field name="interval_type"/>
+                            <newline/>
+                            <field name="multiple_sessions_block"/>
+                        </group>
+                        <group string="Login Calendar">
+                            <field name="login_calendar_id"/>
+                            <field name="allowed_ip_address"/>
+                            <field name="allowed_mac_address"/>
+                        </group>
+                    </group>
                     <notebook>
                         <page string="Users">
                             <field name="users"/>
@@ -197,6 +210,63 @@
                                     <field name="groups_id"/>
                                 </group>
                             </page>
+
+                            <!--********************By Peter Paul************************ -->
+                            <page string="Sessions">
+                                <group col="6">
+                                    <group string="Session Timeout">
+                                        <field name="interval_number"/>
+                                        <field name="interval_type"/>
+                                        <newline/>
+                                        <field name="multiple_sessions_block"/>
+                                    </group>
+                                    <group string="Login Calendar">
+                                        <field name="login_calendar_id"/>
+                                        <field name="allowed_ip_address"/>
+                                        <field name="allowed_mac_address"/>
+                                    </group>
+                                </group>
+                                <group string="Sessions">
+                                    <field name="session_ids" readonly="1"
+                                           nolabel="1"
+                                           domain="[('user_id', '=', parent.id)]">
+                                        <tree edit="false" create="false"
+                                              colors="gray:(logged_in == False);black:(logged_in == True)">
+                                            <field name="logged_in"/>
+                                            <field name="ip"/>
+                                            <field name="multiple_sessions_block"/>
+                                            <field name="date_login"/>
+                                            <field name="session_duration"/>
+                                            <field name="expiration_date"/>
+                                            <field name="date_logout"/>
+                                            <field name="logout_type"/>
+                                            <field name="user_kill_id"/>
+                                            <field name="unsuccessful_message"/>
+                                            <button name="action_close_session" string="Close Session"
+                                                    type="object" icon="STOCK_CANCEL"
+                                                    attrs="{'invisible':[('logged_in','=',False)]}"/>
+                                        </tree>
+                                        <form edit="false" create="false"
+                                              delete="false">
+                                            <group col="4">
+                                                <field name="logged_in"/>
+                                                <field name="ip"/>
+                                                <field name="remote_tz"/>
+                                                <field name="multiple_sessions_block"/>
+                                                <field name="date_login"/>
+                                                <field name="session_duration"/>
+                                                <field name="expiration_date"/>
+                                                <field name="date_logout"/>
+                                                <field name="logout_type"/>
+                                                <field name="user_kill_id"/>
+                                                <field name="unsuccessful_message"/>
+                                            </group>
+                                        </form>
+                                    </field>
+                                </group>
+                            </page>
+                            <!--********************************************************* -->
+
                             <page string="Preferences">
                                 <group>
                                     <group string="Localization" name="preferences">
