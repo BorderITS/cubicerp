@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openerp>
+    <data>
+        <record id="view_auth_settings" model="ir.ui.view">
+            <field name="name">auth.config.settings.form</field>
+            <field name="model">auth.config.settings</field>
+            <field name="arch" type="xml">
+                <form string="Authentication Settings" class="oe_form_configuration">
+                    <header>
+                        <button string="Apply" type="object" name="execute" class="oe_highlight"/>
+                        or
+                        <button string="Cancel" type="object" name="cancel" class="oe_link"/>
+                    </header>
+                    <separator string="Authentication Settings"/>
+                    <group>
+                        <label for="id" string="Password Strength"/>
+                        <div>
+                            <p>
+                                <label string="This section allows you to determine password complexity"/>
+                            </p>
+                            <div>
+                                <field name="pwd_min_character" class="oe_inline"/>
+                                <label for="pwd_min_character"/>
+                            </div>
+                            <div>
+                                <field name="pwd_has_capital_letter" class="oe_inline"/>
+                                <label for="pwd_has_capital_letter"/>
+                            </div>
+                            <div>
+                                <field name="pwd_has_digit" class="oe_inline"/>
+                                <label for="pwd_has_digit"/>
+                            </div>
+                            <div>
+                                <field name="pwd_has_special_letter" class="oe_inline"/>
+                                <label for="pwd_has_special_letter"/>
+                            </div>
+                        </div>
+                    </group>
+                </form>
+            </field>
+        </record>
+
+        <record id="action_auth_settings" model="ir.actions.act_window">
+            <field name="name">Authentication Settings</field>
+            <field name="res_model">auth.config.settings</field>
+            <field name="view_mode">form</field>
+            <field name="target">inline</field>
+        </record>
+
+        <menuitem id="menu_auth_settings" parent="base.menu_config" action="action_auth_settings"/>
+    </data>
+</openerp>
