@@ -557,7 +557,9 @@ class Home(http.Controller):
                 if sessions and user.multiple_sessions_block:
                     multi_ok = False
 
-                    # *********************************comprobacion de la direcion IP (inicio)*********************************************************************
+                # ******************************************************************************************************
+                # comprobacion de la direcion IP (inicio)
+                # ******************************************************************************************************
                 ip_check = True
                 #                    //*** cosas con IP Rolo
                 user_ips_with_mask = user.allowed_ip_address
@@ -586,15 +588,14 @@ class Home(http.Controller):
                     unsuccessful_message = "unsuccessful login from '%s', IP Address not allowed" % (
                         request.params['login'])
 
-                    # *********************************comprobacion de la direcion IP (Fin)*********************************************************************
-
-
-                    # *********************************comprobacion de la direcion MAC (inicio)*********************************************************************
+                # ******************************************************************************************************
+                # comprobacion de la direcion MAC (inicio)
+                # ******************************************************************************************************
                 mac_check = False
                 user_mac_address = user.allowed_mac_address
                 # direccion mac enviada desde el navegador
                 mac_address_request = request.httprequest.args.get('remote_mac', False)
-                if user_mac_address != None and user_mac_address != False:
+                if user_mac_address and mac_address_request:
                     if mac_address_request in user_mac_address.split(','):
                         mac_check = True
                     else:
