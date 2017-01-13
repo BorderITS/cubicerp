@@ -53,7 +53,10 @@ necessarily have to be enabled).
 
 """,
     'depends': ['base'],
-    'data': [],
+    'data': [
+        "data/auth_password_settings_data.xml",
+        "views/res_config_view.xml",
+    ],
     'auto_install': True,
     'installable': True,
 }
