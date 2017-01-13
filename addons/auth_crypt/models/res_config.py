@@ -6,8 +6,7 @@ from openerp.tools.safe_eval import safe_eval
 
 
 class AuthConfigSettings(models.TransientModel):
-    _name = 'auth.config.settings'
-    _inherit = 'res.config.settings'
+    _inherit = 'auth.config.settings'
 
     pwd_min_character = fields.Integer(string='Minimum Password Length')
     pwd_has_capital_letter = fields.Boolean(string='Use Capital Letters')
