@@ -250,12 +250,7 @@ class res_users(osv.osv):
                             s['id'],
                             {
                                 'expiration_date': datetime.strftime(
-                                    (datetime.strptime(
-                                        now,
-                                        DEFAULT_SERVER_DATETIME_FORMAT) +
-                                        relativedelta(
-                                        seconds=seconds)),
-                                    DEFAULT_SERVER_DATETIME_FORMAT),
+                                    (now + relativedelta(seconds=seconds)), DEFAULT_SERVER_DATETIME_FORMAT),
                                 'session_duration': str(
                                     datetime.strptime(
                                         now,
