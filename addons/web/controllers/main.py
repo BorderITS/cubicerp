@@ -522,6 +522,7 @@ class Home(http.Controller):
         calendar_ok = False
         calendar_group = ''
         unsuccessful_message = ''
+        now = datetime.datetime.now()
 
         if request.httprequest.method == 'GET' and redirect and request.session.uid:
             return http.redirect_with_hash(redirect)
@@ -613,8 +614,9 @@ class Home(http.Controller):
                     unsuccessful_message = "unsuccessful login from '%s', MAC Address not allowed" % (
                         request.params['login'])
 
-                    # *********************************comprobacion de la direcion MAC (Fin)*********************************************************************
-
+                # ******************************************************************************************************
+                #
+                # ******************************************************************************************************
                 if ip_check and multi_ok and (not uid is SUPERUSER_ID) and mac_check:
                     # check calendars
                     calendar_obj = request.registry.get(
