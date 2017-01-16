@@ -310,6 +310,8 @@
                         <t t-esc="reason2" />
                         <br />
                         <t t-esc="reason3" />
+                        <br />
+                        <t t-esc="reason4" />
                     </p>
                     <p class="alert alert-success" t-if="message">
                         <t t-esc="message"/>

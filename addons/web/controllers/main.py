@@ -45,7 +45,7 @@ from openerp.http import request, serialize_exception as _serialize_exception
 from netaddr import IPAddress, IPNetwork
 from openerp import SUPERUSER_ID
 import pytz
-from openerp.osv import fields
+from openerp.osv import fields, osv
 from openerp.tools import DEFAULT_SERVER_DATETIME_FORMAT
 from dateutil.relativedelta import *
 
@@ -524,6 +524,8 @@ class Home(http.Controller):
         unsuccessful_message = ''
         now = datetime.datetime.now()
 
+        check_mac_adr = True
+
         if request.httprequest.method == 'GET' and redirect and request.session.uid:
             return http.redirect_with_hash(redirect)
 
@@ -562,7 +564,6 @@ class Home(http.Controller):
                 # comprobacion de la direcion IP (inicio)
                 # ******************************************************************************************************
                 ip_check = True
-                #                    //*** cosas con IP Rolo
                 user_ips_with_mask = user.allowed_ip_address
                 # direccion ip del request
                 ip_address = IPAddress(request.httprequest.remote_addr)
@@ -592,27 +593,34 @@ class Home(http.Controller):
                 # ******************************************************************************************************
                 # comprobacion de la direcion MAC (inicio)
                 # ******************************************************************************************************
-                mac_check = False
-                user_mac_address = user.allowed_mac_address
-                # direccion mac enviada desde el navegador
-                mac_address_request = request.httprequest.args.get('remote_mac', False)
-                if user_mac_address and mac_address_request:
-                    if mac_address_request in user_mac_address.split(','):
-                        mac_check = True
-                    else:
-                        # los grupos
-                        for group in user.groups_id:
-                            group_mac_address = group.allowed_mac_address
-                            if group_mac_address != None and group_mac_address != False:
-                                if mac_address_request in group_mac_address.split(','):
-                                    mac_check = True
-                                    break
-                else:
-                    mac_check = True
+                if user.login_validate_mac:
 
-                if not mac_check:
-                    unsuccessful_message = "unsuccessful login from '%s', MAC Address not allowed" % (
-                        request.params['login'])
+                    mac_check = False
+                    user_mac_address = user.allowed_mac_address
+                    # direccion mac enviada desde el navegador
+                    mac_address_request =  request.httprequest.environ.get('HTTP_REMOTE_MAC', False)
+                    if not mac_address_request:
+                        check_mac_adr = False
+                        unsuccessful_message = "unsuccessful login from '%s', Check that the X plugin is installed in the browser" % (
+                            request.params['login'])
+
+                    if user_mac_address:
+                        if mac_address_request in user_mac_address.split(','):
+                            mac_check = True
+                        else:
+                            # los grupos
+                            for group in user.groups_id:
+                                group_mac_address = group.allowed_mac_address
+                                if group_mac_address != None and group_mac_address != False:
+                                    if mac_address_request in group_mac_address.split(','):
+                                        mac_check = True
+                                        break
+                    else:
+                        mac_check = True
+
+                    if not mac_check:
+                        unsuccessful_message = "unsuccessful login from '%s', MAC Address not allowed" % (
+                            request.params['login'])
 
                 # ******************************************************************************************************
                 #
@@ -684,7 +692,7 @@ class Home(http.Controller):
                 unsuccessful_message = "unsuccessful login from '%s', wrong username or password" % request.params[
                     'login']
             # ip_check added by Rolo
-            if not unsuccessful_message or (uid is SUPERUSER_ID and ip_check):
+            if not unsuccessful_message or (uid is SUPERUSER_ID and ip_check) and check_mac_adr:
                 self.save_session(
                     request.cr,
                     uid,
@@ -708,6 +716,8 @@ class Home(http.Controller):
             values['reason2'] = '- User not allowed to have multiple logins'
             values[
                 'reason3'] = '- User not allowed to login at this specific time or day or From Specific IP Address or From Specific MAC Address'
+
+            values['reason4'] = '- Check that the X plugin is installed in the browser'
         return request.render('web.login', values)
 
     @http.route('/login', type='http', auth="none")
