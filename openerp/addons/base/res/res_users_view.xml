@@ -235,6 +235,7 @@
                                     </group>
                                     <group string="Login Calendar">
                                         <field name="allowed_ip_address"/>
+                                        <field name="login_validate_mac"/>
                                         <field name="allowed_mac_address"/>
                                     </group>
                                 </group>
