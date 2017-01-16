@@ -605,7 +605,7 @@ class Home(http.Controller):
                             request.params['login'])
 
                     if user_mac_address:
-                        if mac_address_request in user_mac_address.split(','):
+                        if mac_address_request in user_mac_address:
                             mac_check = True
                         else:
                             # los grupos
