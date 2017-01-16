@@ -45,6 +45,8 @@ from openerp.tools import DEFAULT_SERVER_DATETIME_FORMAT
 from openerp.addons.base.ir.ir_cron import _intervalTypes
 from dateutil.relativedelta import *
 
+from netaddr import EUI
+
 _logger = logging.getLogger(__name__)
 
 # Only users who can modify the user (incl. the user herself) see the real contents of these fields
@@ -365,6 +367,18 @@ class res_users(osv.osv):
     }
     allowed_mac_address = Fields.Char('Allowed login MAC  address')
 
+    login_validate_mac = Fields.Boolean('Login validate MAC')
+
+    # @api.one
+    # @api.constrains('login_validate_mac')
+    # def _check_mac_address(self):
+    #     try:
+    #         EUI(self.login_validate_mac)
+    #     except Exception:
+    #         raise Exception('There is at least one wrong MAC address')
+
+
+
     # overridden inherited fields to bypass access rights, in case you have
     # access to the user but not its corresponding partner
     name = openerp.fields.Char(related='partner_id.name', inherited=True)
@@ -398,8 +412,19 @@ class res_users(osv.osv):
     def _check_company(self, cr, uid, ids, context=None):
         return all(((this.company_id in this.company_ids) or not this.company_ids) for this in self.browse(cr, uid, ids, context))
 
+
+    def _validate_mac(self, cr, uid, ids, context=None):
+
+        user = self.browse(cr, uid, ids, context)
+
+        try:
+            EUI(user[0].login_validate_mac)
+        except Exception:
+             return  False
+
     _constraints = [
         (_check_company, 'The chosen company is not in the allowed companies for this user', ['company_id', 'company_ids']),
+        (_validate_mac, 'There is at least one wrong MAC address', ['login_validate_mac']),
     ]
 
     _sql_constraints = [
@@ -504,6 +529,12 @@ class res_users(osv.osv):
             access_rights_uid=access_rights_uid)
 
     def create(self, cr, uid, vals, context=None):
+
+        # try:
+        #     EUI(vals.get('login_validate_mac'))
+        # except Exception:
+        #     raise Exception('There is at least one wrong MAC address')
+
         user_id = super(res_users, self).create(cr, uid, vals, context=context)
         user = self.browse(cr, uid, user_id, context=context)
         if user.partner_id.company_id: 
