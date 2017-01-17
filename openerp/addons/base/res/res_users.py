@@ -416,11 +416,14 @@ class res_users(osv.osv):
     def _validate_mac(self, cr, uid, ids, context=None):
 
         user = self.browse(cr, uid, ids, context)
-
-        try:
-            EUI(user[0].login_validate_mac)
-        except Exception:
-             return  False
+        if user[0].login_validate_mac:
+            try:
+                EUI(user[0].login_validate_mac)
+                return True
+            except Exception:
+                 return  False
+        else:
+            return True
 
     _constraints = [
         (_check_company, 'The chosen company is not in the allowed companies for this user', ['company_id', 'company_ids']),
