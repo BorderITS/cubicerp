@@ -429,7 +429,7 @@ class mail_thread(osv.AbstractModel):
                                   for record in records)
 
         # Perform write
-        result = super(mail_thread, self).write(cr, uid, ids, values, context=context)
+        result = super(mail_thread, self).write(cr, uid, ids, values, context)
 
         # Perform the tracking
         if tracked_fields:

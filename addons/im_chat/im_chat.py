@@ -284,7 +284,7 @@ class im_chat_presence(osv.Model):
             # write only if the last_poll is passed TIMEOUT, or if the status has changed
             delta = datetime.datetime.now() - datetime.datetime.strptime(presences[0].last_poll, DEFAULT_SERVER_DATETIME_FORMAT)
             if (delta > datetime.timedelta(seconds=TIMEOUT) or send_notification):
-                self.write(cr, uid, presence_ids, vals, context=context)
+                self.write(cr, uid, presence_ids, vals, context)
         # avoid TransactionRollbackError
         cr.commit()
         # notify if the status has changed

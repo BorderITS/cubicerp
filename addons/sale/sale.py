@@ -611,7 +611,7 @@ class sale_order(osv.osv):
         if not context:
             context = {}
         assert len(ids) == 1, 'This option should only be used for a single id at a time.'
-        self.signal_workflow(cr, uid, ids, 'order_confirm')
+        self.signal_workflow(cr, uid, ids, 'order_confirm',context )
         if context.get('send_email'):
             self.force_quotation_send(cr, uid, ids, context=context)
         return True
@@ -623,10 +623,10 @@ class sale_order(osv.osv):
                 raise osv.except_osv(_('Error!'),_('You cannot confirm a sales order which has no line.'))
             noprod = self.test_no_product(cr, uid, o, context)
             if (o.order_policy == 'manual') or noprod:
-                self.write(cr, uid, [o.id], {'state': 'manual', 'date_confirm': fields.date.context_today(self, cr, uid, context=context)})
+                self.write(cr, uid, [o.id], {'state': 'manual', 'date_confirm': fields.date.context_today(self, cr, uid, context)})
             else:
-                self.write(cr, uid, [o.id], {'state': 'progress', 'date_confirm': fields.date.context_today(self, cr, uid, context=context)})
-            self.pool.get('sale.order.line').button_confirm(cr, uid, [x.id for x in o.order_line if x.state != 'cancel'])
+                self.write(cr, uid, [o.id], {'state': 'progress', 'date_confirm': fields.date.context_today(self, cr, uid, context)})
+            self.pool.get('sale.order.line').button_confirm(cr, uid, [x.id for x in o.order_line if x.state != 'cancel'],context)
         return True
 
     def action_quotation_send(self, cr, uid, ids, context=None):
@@ -1052,10 +1052,10 @@ class sale_order_line(osv.osv):
                 raise osv.except_osv(_('Invalid Action!'), _('You cannot cancel a sales order line that has already been invoiced.'))
         procurement_obj = self.pool['procurement.order']
         procurement_obj.cancel(cr, uid, sum([l.procurement_ids.ids for l in lines], []), context=context)
-        return self.write(cr, uid, ids, {'state': 'cancel'})
+        return self.write(cr, uid, ids, {'state': 'cancel'},context)
 
     def button_confirm(self, cr, uid, ids, context=None):
-        return self.write(cr, uid, ids, {'state': 'confirmed'})
+        return self.write(cr, uid, ids, {'state': 'confirmed'},context)
 
     def button_done(self, cr, uid, ids, context=None):
         res = self.write(cr, uid, ids, {'state': 'done'})
