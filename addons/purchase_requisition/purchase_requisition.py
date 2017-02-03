@@ -21,22 +21,27 @@
 ##############################################################################
 
 from datetime import datetime
-from openerp.osv import fields, osv
-from openerp.tools.translate import _
-from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, DEFAULT_SERVER_DATETIME_FORMAT
-import openerp.addons.decimal_precision as dp
 
-class purchase_requisition(osv.osv):
+from openerp import api, fields, models, _
+from openerp.exceptions import Warning, ValidationError
+from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, DEFAULT_SERVER_DATETIME_FORMAT
+from openerp.addons import decimal_precision as dp
+
+
+class PurchaseRequisition(models.Model):
     _name = "purchase.requisition"
     _description = "Purchase Requisition"
     _inherit = ['mail.thread', 'ir.needaction_mixin']
 
-    def _get_po_line(self, cr, uid, ids, field_names, arg=None, context=None):
-        result = dict((res_id, []) for res_id in ids)
-        for element in self.browse(cr, uid, ids, context=context):
-            for po in element.purchase_ids:
-                result[element.id] += [po_line.id for po_line in po.order_line]
-        return result
+    @api.one
+    def _get_picking_in(self):
+        return self.env.ref('stock.picking_type_in')
+
+    @api.multi
+    @api.depends('purchase_ids.order_line')
+    def _get_po_line(self):
+        for record in self:
+            record.po_line_ids = record.mapped('purchase_ids.order_line')
 
     _columns = {
         'name': fields.char('Requisition', required=True, copy=False),
@@ -68,9 +73,44 @@ class purchase_requisition(osv.osv):
                                           " services delivered by the supplier")
     }
 
-    def _get_picking_in(self, cr, uid, context=None):
-        obj_data = self.pool.get('ir.model.data')
-        return obj_data.get_object_reference(cr, uid, 'stock', 'picking_type_in')[1]
+    name = fields.Char(string='Requisition',required=True ,copy=False, default='/')
+    parent_id = fields.Many2one('purchase.requisition', string="Generated Requisition",ondelete='cascade')
+    child_ids = fields.One2many('purchase.requisition', 'parent_id', string='Original Requisitions')
+    origin = fields.Char(string='Source Document')
+    ordering_date = fields.Date('Scheduled Ordering Date')
+    date_end = fields.Datetime('Bid Submission Deadline')
+    schedule_date = fields.Date('Scheduled Date', select=True,
+                                help="The expected and scheduled date where all the products are received")
+    user_id = fields.Many2one('res.users', string="Responsible", default=lambda self: self.env.user)
+    exclusive = fields.Selection([
+        ('exclusive', 'Select only one RFQ (exclusive)'),
+        ('multiple', 'Select multiple RFQ')
+        ], 'Bid Selection Type', required=True, default='multiple',
+        help="Select only one RFQ (exclusive):  On the confirmation of a purchase order, it cancels the remaining "
+             "purchase order.\nSelect multiple RFQ:  It allows to have multiple purchase orders.On confirmation of a "
+             "purchase order it does not cancel the remaining orders""")
+    description = fields.Text('Description')
+    company_id = fields.Many2one('res.company', string="Company", required=True,
+                                 default=lambda self: self.env['res.company']._company_default_get(
+                                     'purchase.requisition'))
+    purchase_ids = fields.One2many('purchase.order', 'requisition_id', string='Purchase Orders',
+                                   states={'done': [('readonly', True)]})
+    po_line_ids = fields.One2many('purchase.order.line', compute="_get_po_line",  string='Products by supplier')
+    line_ids = fields.One2many('purchase.requisition.line', 'requisition_id', string='Products to Purchase',
+                               states={'done': [('readonly', True)]}, copy=True)
+    procurement_id = fields.Many2one('procurement.order', string="Procurement", ondelete='set null', copy=False)
+    warehouse_id = fields.Many2one('stock.warehouse', 'Warehouse')
+    state = fields.Selection([
+        ('draft', 'Draft'), ('in_progress', 'Confirmed'),
+        ('open', 'Bid Selection'), ('done', 'PO Created'),
+        ('cancel', 'Cancelled')
+        ], 'Status', track_visibility='onchange', required=True,copy=False, default='draft')
+    multiple_rfq_per_supplier = fields.Boolean('Multiple RFQ per supplier')
+    account_analytic_id = fields.Many2one('account.analytic.account', 'Analytic Account')
+    picking_type_id = fields.Many2one('stock.picking.type', 'Picking Type', required=True , default=_get_picking_in)
+    compliance = fields.Boolean("Compliance", readonly=True,
+                                help="This is used by the end user to accept and approve to the products and"
+                                      " services delivered by the supplier")
 
     _defaults = {
         'state': 'draft',
@@ -86,134 +126,180 @@ class purchase_requisition(osv.osv):
             vals['name'] = self.pool.get('ir.sequence').get(cr, uid, 'purchase.order.requisition')
         return super(purchase_requisition, self).create(cr, uid, vals, context=context)
 
-    def tender_cancel(self, cr, uid, ids, context=None):
-        purchase_order_obj = self.pool.get('purchase.order')
-        # try to set all associated quotations to cancel state
-        for tender in self.browse(cr, uid, ids, context=context):
+
+
+    # _defaults = {
+    #     'state': 'draft',
+    #     'exclusive': 'multiple',
+    #     'company_id': lambda self, cr, uid, c: self.pool.get('res.company')._company_default_get(cr, uid, 'purchase.requisition', context=c),
+    #     'user_id': lambda self, cr, uid, c: self.pool.get('res.users').browse(cr, uid, uid, c).id,
+    #     'name': '/',
+    #     'picking_type_id': _get_picking_in,
+    # }
+
+    @api.model
+    def create(self, vals):
+        if vals.get('name', '/') == '/':
+            vals['name'] = self.env['ir.sequence'].get('purchase.order.requisition')
+        return super(PurchaseRequisition, self).create(vals)
+
+    @api.multi
+    def tender_cancel(self):
+        for tender in self:
             if tender.parent_id:
-                raise osv.except_osv(_('Warning!'), _(
-                    'The requisition %s has a generated requisition. You must cancel the requisition %s') % (tender.name,tender.parent_id.name))
-            self._tender_cancel(cr, uid, [tender.id] + [c.id for c in tender.child_ids], context=context)
+                raise Warning(_('Warning!'), _(
+                        'The requisition %s has a generated requisition. You must cancel the requisition %s') % (
+                        tender.name,
+                        tender.parent_id.name
+                        ))
+
+            (tender | tender.chield_ids)._tender_cancel()
         return True
 
-    def _tender_cancel(self, cr, uid, ids, context=None):
-        purchase_order_obj = self.pool.get('purchase.order')
+    @api.multi
+    def _tender_cancel(self):
         # try to set all associated quotations to cancel state
-        for tender in self.browse(cr, uid, ids, context=context):
-            for purchase_order in tender.purchase_ids:
-                purchase_order_obj.action_cancel(cr, uid, [purchase_order.id], context=context)
-                purchase_order_obj.message_post(cr, uid, [purchase_order.id], body=_('Cancelled by the tender associated to this quotation.'), context=context)
-        return self.write(cr, uid, ids, {'state': 'cancel'})
+        for po in self.mapped('purchase_ids'):
+            po.action_cancel()
+            po.message_post(body=_("Cancelled by the tender associated to this quotation."))
+        return self.write({'state': 'cancel'})
 
-    def tender_in_progress(self, cr, uid, ids, context=None):
-        for tender in self.browse(cr, uid, ids, context=context):
+    @api.multi
+    def tender_in_progress(self):
+        for tender in self:
             if tender.parent_id:
-                raise osv.except_osv(_('Warning!'), _(
+                raise Warning(_('Warning!'), _(
                     'The requisition %s has a generated requisition. You must confirm the requisition %s') % (
-                                     tender.name, tender.parent_id.name))
-            self._tender_in_progress(cr, uid, [tender.id] + [c.id for c in tender.child_ids], context=context)
+                    tender.name,
+                    tender.parent_id.name
+                    ))
+
+            (tender | tender.chield_ids)._tender_in_progress()
         return True
 
-    def _tender_in_progress(self, cr, uid, ids, context=None):
-        return self.write(cr, uid, ids, {'state': 'in_progress'}, context=context)
+    @api.multi
+    def _tender_in_progress(self):
+        return self.write({'state': 'in_progress'})
 
-    def tender_open(self, cr, uid, ids, context=None):
-        for tender in self.browse(cr, uid, ids, context=context):
+    @api.multi
+    def tender_open(self):
+        for tender in self:
             if tender.parent_id:
-                raise osv.except_osv(_('Warning!'), _(
+                raise Warning(_('Warning!'), _(
                     'The requisition %s has a generated requisition. You must open the requisition %s') % (
-                                         tender.name, tender.parent_id.name))
-            self._tender_open(cr, uid, [tender.id] + [c.id for c in tender.child_ids], context=context)
+                    tender.name,
+                    tender.parent_id.name
+                    ))
+
+            (tender | tender.chield_ids)._tender_open()
         return True
 
-    def _tender_open(self, cr, uid, ids, context=None):
-        return self.write(cr, uid, ids, {'state': 'open'}, context=context)
+    @api.multi
+    def _tender_open(self):
+        return self.write({'state': 'open'})
 
-    def tender_done(self, cr, uid, ids, context=None):
-        for tender in self.browse(cr, uid, ids, context=context):
+    @api.multi
+    def tender_done(self):
+        for tender in self:
             if tender.parent_id:
-                raise osv.except_osv(_('Warning!'), _(
+                raise Warning(_('Warning!'), _(
                     'The requisition %s has a generated requisition. You must done the requisition %s') % (
-                                         tender.name, tender.parent_id.name))
-            self._tender_done(cr, uid, [tender.id] + [c.id for c in tender.child_ids], context=context)
+                    tender.name,
+                    tender.parent_id.name
+                    ))
+
+            (tender | tender.chield_ids)._tender_done()
         return True
 
-    def _tender_done(self, cr, uid, ids, context=None):
-        return self.write(cr, uid, ids, {'state': 'done'}, context=context)
+    @api.multi
+    def _tender_done(self):
+        return self.write({'state': 'done'})
 
-    def tender_draft(self, cr, uid, ids, context=None):
-        for tender in self.browse(cr, uid, ids, context=context):
+    @api.multi
+    def tender_draft(self):
+        for tender in self:
             if tender.parent_id:
-                raise osv.except_osv(_('Warning!'), _(
+                raise Warning(_('Warning!'), _(
                     'The requisition %s has a generated requisition. You must draft the requisition %s') % (
-                                         tender.name, tender.parent_id.name))
-            self._tender_draft(cr, uid, [tender.id] + [c.id for c in tender.child_ids], context=context)
+                    tender.name,
+                    tender.parent_id.name
+                    ))
+
+            (tender | tender.chield_ids)._tender_draft()
         return True
 
-    def _tender_draft(self, cr, uid, ids, context=None):
-        return self.write(cr, uid, ids, {'state': 'draft', 'compliance': False}, context=context)
+    @api.multi
+    def _tender_draft(self):
+        return self.write({
+            'state': 'draft',
+            'compliance': False
+            })
 
-    def tender_compliance(self, cr, uid, ids, context=None):
-        for tender in self.browse(cr, uid, ids, context=context):
-            if tender.child_ids:
-                raise osv.except_osv(_('Warning!'), _(
-                    'The requisition %s has child requisitions. You must compliance the child requisitions') % (
-                                         tender.name))
-            tender_ids = [tender.id]
+    @api.multi
+    def tender_compliance(self):
+        for tender in self:
             if tender.parent_id:
-                if len(tender.parent_id.child_ids) == len(set([c.id for c in tender.parent_id.child_ids if c.compliance] + [tender.id])):
-                    tender_ids += [tender.parent_id.id]
-            self._tender_compliance(cr, uid, tender_ids, context=context)
+                raise Warning(_('Warning!'), _(
+                    'The requisition %s has child requisitions. You must compliance the child requisitions') % (
+                    tender.name
+                    ))
+
+            (tender | tender.parent_id
+                      if len(tender.parent_id.child_ids) == len(tender.parent_id.child_ids.filtered(
+                                                                    lambda r: r.compliance
+                                                                    ) | tender)
+                      else tender)._tender_compliance()
+
         return True
 
-    def _tender_compliance(self, cr, uid, ids, context=None):
-        return self.write(cr, uid, ids, {'compliance': True}, context=context)
+    @api.multi
+    def _tender_compliance(self):
+        return self.write({'compliance': True})
 
-    def open_product_line(self, cr, uid, ids, context=None):
+    @api.multi
+    def open_product_line(self):
         """ This opens product line view to view all lines from the different quotations, groupby default by product and partner to show comparaison
             between supplier price
             @return: the product line tree view
         """
-        if context is None:
-            context = {}
-        res = self.pool.get('ir.actions.act_window').for_xml_id(cr, uid, 'purchase_requisition', 'purchase_line_tree', context=context)
-        res['context'] = context
-        po_lines = self.browse(cr, uid, ids, context=context)[0].po_line_ids
+        res = self.env.ref('purchase_requisition.purchase_line_tree').read()[0]
+        res['domain'] = [('id', 'in', self[0:0].mapped('po_line_ids.id'))]
+        res['context'] = self._context.copy()
         res['context'] = {
             'search_default_groupby_product': True,
             'search_default_hide_cancelled': True,
-            'tender_id': ids[0],
-        }
-        res['domain'] = [('id', 'in', [line.id for line in po_lines])]
+            'tender_id': self[0:0].id,
+            }
         return res
 
-    def open_rfq(self, cr, uid, ids, context=None):
+    @api.multi
+    def open_rfq(self):
         """ This opens rfq view to view all quotations associated to the call for bids
             @return: the RFQ tree view
         """
-        if context is None:
-            context = {}
-        res = self.pool.get('ir.actions.act_window').for_xml_id(cr, uid, 'purchase', 'purchase_rfq', context=context)
-        res['context'] = context
-        po_ids = [po.id for po in self.browse(cr, uid, ids, context=context)[0].purchase_ids]
-        res['domain'] = [('id', 'in', po_ids)]
+        res = self.env.ref('purchase.purchase_rfq').read()[0]
+        res['domain'] = [('id', 'in', self[0:0].mapped('purchase_ids.id'))]
+        res['context'] = self._context.copy()
         return res
 
-    def _prepare_purchase_order(self, cr, uid, requisition, supplier, context=None):
+    @api.model
+    def _prepare_purchase_order(self, requisition, supplier):
         supplier_pricelist = supplier.property_product_pricelist_purchase
         return {
             'origin': requisition.name,
-            'date_order': requisition.date_end or fields.datetime.now(),
+            'date_order': requisition.date_end or fields.Datetime.now(),
             'partner_id': supplier.id,
             'pricelist_id': supplier_pricelist.id,
-            'currency_id': supplier_pricelist and supplier_pricelist.currency_id.id or requisition.company_id.currency_id.id,
-            'location_id': requisition.procurement_id and requisition.procurement_id.location_id.id or requisition.picking_type_id.default_location_dest_id.id,
+            'currency_id': (supplier_pricelist and supplier_pricelist.currency_id.id or
+                            requisition.company_id.currency_id.id,),
+            'location_id': (requisition.procurement_id and requisition.procurement_id.location_id.id or
+                            requisition.picking_type_id.default_location_dest_id.id,),
             'company_id': requisition.company_id.id,
             'fiscal_position': supplier.property_account_position and supplier.property_account_position.id or False,
             'requisition_id': requisition.id,
             'notes': requisition.description,
             'picking_type_id': requisition.picking_type_id.id
-        }
+            }
 
     def _prepare_purchase_order_line(self, cr, uid, requisition, requisition_line, purchase_id, supplier, context=None):
         if context is None:
