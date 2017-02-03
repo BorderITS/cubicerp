@@ -33,10 +33,6 @@ class PurchaseRequisition(models.Model):
     _description = "Purchase Requisition"
     _inherit = ['mail.thread', 'ir.needaction_mixin']
 
-    @api.model
-    def _get_picking_in(self):
-        return self.env.ref('stock.picking_type_in')
-
     name = fields.Char(string='Requisition',required=True ,copy=False, default='/')
     parent_id = fields.Many2one('purchase.requisition', string="Generated Requisition",ondelete='cascade')
     child_ids = fields.One2many('purchase.requisition', 'parent_id', string='Original Requisitions')
@@ -59,7 +55,7 @@ class PurchaseRequisition(models.Model):
                                      'purchase.requisition'))
     purchase_ids = fields.One2many('purchase.order', 'requisition_id', string='Purchase Orders',
                                    states={'done': [('readonly', True)]})
-    po_line_ids = fields.One2many('purchase.order.line', compute="_get_po_line",  string='Products by supplier')
+    po_line_ids = fields.One2many('purchase.order.line', compute="_compute_po_line_ids",  string='Products by supplier')
     line_ids = fields.One2many('purchase.requisition.line', 'requisition_id', string='Products to Purchase',
                                states={'done': [('readonly', True)]}, copy=True)
     procurement_id = fields.Many2one('procurement.order', string="Procurement", ondelete='set null', copy=False)
@@ -72,71 +68,20 @@ class PurchaseRequisition(models.Model):
     multiple_rfq_per_supplier = fields.Boolean('Multiple RFQ per supplier')
     account_analytic_id = fields.Many2one('account.analytic.account', 'Analytic Account')
     picking_type_id = fields.Many2one('stock.picking.type', 'Picking Type', required=True ,
-                                      default=lambda self: _get_picking_in)
+                                      default=lambda self: self._default_picking_type_id)
     compliance = fields.Boolean("Compliance", readonly=True,
                                 help="This is used by the end user to accept and approve to the products and"
                                       " services delivered by the supplier")
+
+    @api.model
+    def _default_picking_type_id(self):
+        return self.env.ref('stock.picking_type_in')
 
     @api.multi
     @api.depends('purchase_ids.order_line')
     def _compute_po_line_ids(self):
         for record in self:
             record.po_line_ids = record.mapped('purchase_ids.order_line')
-
-    _columns = {
-        'name': fields.char('Requisition', required=True, copy=False),
-        'parent_id': fields.many2one('purchase.requisition', string="Generated Requisition", ondelete='cascade'),
-        'child_ids': fields.one2many('purchase.requisition', 'parent_id', string="Original Requisitions"),
-        'origin': fields.char('Source Document'),
-        'ordering_date': fields.date('Scheduled Ordering Date'),
-        'date_end': fields.datetime('Bid Submission Deadline'),
-        'schedule_date': fields.date('Scheduled Date', select=True, help="The expected and scheduled date where all the products are received"),
-        'user_id': fields.many2one('res.users', 'Responsible'),
-        'exclusive': fields.selection([('exclusive', 'Select only one RFQ (exclusive)'), ('multiple', 'Select multiple RFQ')], 'Bid Selection Type', required=True, help="Select only one RFQ (exclusive):  On the confirmation of a purchase order, it cancels the remaining purchase order.\nSelect multiple RFQ:  It allows to have multiple purchase orders.On confirmation of a purchase order it does not cancel the remaining orders"""),
-        'description': fields.text('Description'),
-        'company_id': fields.many2one('res.company', 'Company', required=True),
-        'purchase_ids': fields.one2many('purchase.order', 'requisition_id', 'Purchase Orders', states={'done': [('readonly', True)]}),
-        'po_line_ids': fields.function(_get_po_line, method=True, type='one2many', relation='purchase.order.line', string='Products by supplier'),
-        'line_ids': fields.one2many('purchase.requisition.line', 'requisition_id', 'Products to Purchase', states={'done': [('readonly', True)]}, copy=True),
-        'procurement_id': fields.many2one('procurement.order', 'Procurement', ondelete='set null', copy=False),
-        'warehouse_id': fields.many2one('stock.warehouse', 'Warehouse'),
-        'state': fields.selection([('draft', 'Draft'), ('in_progress', 'Confirmed'),
-                                   ('open', 'Bid Selection'), ('done', 'PO Created'),
-                                   ('cancel', 'Cancelled')],
-                                  'Status', track_visibility='onchange', required=True,
-                                  copy=False),
-        'multiple_rfq_per_supplier': fields.boolean('Multiple RFQ per supplier'),
-        'account_analytic_id': fields.many2one('account.analytic.account', 'Analytic Account'),
-        'picking_type_id': fields.many2one('stock.picking.type', 'Picking Type', required=True),
-        'compliance': fields.boolean("Compliance", readonly=True,
-                                     help="This is used by the end user to accept and approve to the products and"
-                                          " services delivered by the supplier")
-    }
-
-    _defaults = {
-        'state': 'draft',
-        'exclusive': 'multiple',
-        'company_id': lambda self, cr, uid, c: self.pool.get('res.company')._company_default_get(cr, uid, 'purchase.requisition', context=c),
-        'user_id': lambda self, cr, uid, c: self.pool.get('res.users').browse(cr, uid, uid, c).id,
-        'name': '/',
-        'picking_type_id': _get_picking_in,
-    }
-
-    def create(self, cr, uid, vals, context=None):
-        if vals.get('name','/') == '/':
-            vals['name'] = self.pool.get('ir.sequence').get(cr, uid, 'purchase.order.requisition')
-        return super(purchase_requisition, self).create(cr, uid, vals, context=context)
-
-
-
-    # _defaults = {
-    #     'state': 'draft',
-    #     'exclusive': 'multiple',
-    #     'company_id': lambda self, cr, uid, c: self.pool.get('res.company')._company_default_get(cr, uid, 'purchase.requisition', context=c),
-    #     'user_id': lambda self, cr, uid, c: self.pool.get('res.users').browse(cr, uid, uid, c).id,
-    #     'name': '/',
-    #     'picking_type_id': _get_picking_in,
-    # }
 
     @api.model
     def create(self, vals):
