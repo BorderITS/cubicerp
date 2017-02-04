@@ -247,30 +247,44 @@ class PurchaseRequisition(models.Model):
             'picking_type_id': requisition.picking_type_id.id
             }
 
-    def _prepare_purchase_order_line(self, cr, uid, requisition, requisition_line, purchase_id, supplier, context=None):
-        if context is None:
-            context = {}
-        po_line_obj = self.pool.get('purchase.order.line')
-        product_uom = self.pool.get('product.uom')
+    @api.model
+    def _prepare_purchase_order_line(self, requisition, requisition_line, purchase_id, supplier):
+        from openerp.osv import fields as flds
+
+        PurchaseOrderLine = self.env['purchase.order.line']
         product = requisition_line.product_id
-        default_uom_po_id = product and product.uom_po_id.id or po_line_obj._get_uom_id(cr, uid, context=context)
-        ctx = context.copy()
+        default_uom_po_id = product and product.uom_po_id.id or PurchaseOrderLine._get_uom_id()
+        ctx = self._context.copy()
         ctx['tz'] = requisition.user_id.tz
-        date_order = requisition.ordering_date and fields.date.date_to_datetime(self, cr, uid, requisition.ordering_date, context=ctx) or fields.datetime.now()
-        qty = product_uom._compute_qty(cr, uid, requisition_line.product_uom_id.id, requisition_line.product_qty, default_uom_po_id)
-        supplier_pricelist = supplier.property_product_pricelist_purchase and supplier.property_product_pricelist_purchase.id or False
-        vals = po_line_obj.onchange_product_id(
-            cr, uid, [], supplier_pricelist, product.id, qty, default_uom_po_id,
-            supplier.id, date_order=date_order,
-            fiscal_position_id=supplier.property_account_position.id,
-            date_planned=requisition_line.schedule_date,
-            name=False, price_unit=False, state='draft', context=context)['value']
+        date_order = (requisition.ordering_date and
+                      flds.date.date_to_datetime(self, self._cr, self._uid, requisition.ordering_date, context=ctx) or
+                      fields.datetime.now())
+        qty = self.env['product.uom']._compute_qty(
+                                    requisition_line.product_uom_id.id,
+                                    requisition_line.product_qty,
+                                    default_uom_po_id
+                                    )
+        supplier_pricelist = (supplier.property_product_pricelist_purchase and
+                              supplier.property_product_pricelist_purchase.id or
+                              False)
+        vals = PurchaseOrderLine.onchange_product_id(
+                                pricelist_id=supplier_pricelist,
+                                product_id=product.id,
+                                qty=qty,
+                                uom_id=default_uom_po_id,
+                                partner_id=supplier.id,
+                                date_order=date_order,
+                                fiscal_position_id=supplier.property_account_position.id,
+                                date_planned=requisition_line.schedule_date,
+                                name=False,
+                                price_unit=False,
+                                state='draft')['value']
         vals.update({
             'order_id': purchase_id,
             'product_id': product.id,
             'account_analytic_id': requisition_line.account_analytic_id.id,
             'taxes_id': [(6, 0, vals.get('taxes_id', []))],
-        })
+            })
         if requisition_line.name:
             vals['name'] = vals['name'] and "%s - %s"%(vals['name'], requisition_line.name) or requisition_line.name
         if not vals.get('date_planned', False):
