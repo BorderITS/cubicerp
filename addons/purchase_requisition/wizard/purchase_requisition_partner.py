@@ -26,9 +26,6 @@ from openerp.exceptions import Warning
 class purchase_requisition_partner(models.TransientModel):
     _name = "purchase.requisition.partner"
     _description = "Purchase Requisition Partner"
-    # _columns = {
-    #     'partner_id': fields.many2one('res.partner', 'Supplier', required=True,domain=[('supplier', '=', True)]),
-    # }
 
     partner_id = fields.Many2one('res.partner', 'Supplier', required=True,domain=[('supplier', '=', True)])
 
