@@ -19,20 +19,20 @@
 #
 ##############################################################################
 
-import openerp.addons.decimal_precision as dp
 from openerp import api, fields, models
+from openerp.addons import decimal_precision as dp
 
-class bid_line_qty(models.TransientModel):
+class BidLineQty(models.TransientModel):
     _name = "bid.line.qty"
     _description = "Change Bid line quantity"
 
-    qty = fields.Float('Quantity', digits_compute=dp.get_precision('Product Unit of Measure'), required=True)
+    qty = fields.Float('Quantity', digits=dp.get_precision('Product Unit of Measure'), required=True)
 
     @api.multi
     def change_qty(self):
-        active_ids = self._context and self._context.get('active_ids', [])
-        data = self.browse()[0]
-        self.env['purchase.order.line'].write(active_ids, {'quantity_bid': data.qty})
+        self.env['purchase.order.line'].browse(self._context.get('active_ids', [])).write({
+                'quantity_bid': self[0].qty,
+                })
         return {'type': 'ir.actions.act_window_close'}
 
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

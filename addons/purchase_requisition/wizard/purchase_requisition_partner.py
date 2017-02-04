@@ -19,29 +19,31 @@
 #
 ##############################################################################
 
-from openerp.tools.translate import _
-from openerp import api, fields, models
+from openerp import api, fields, models, _
 from openerp.exceptions import Warning
 
-class purchase_requisition_partner(models.TransientModel):
+class PurchaseRequisitionPartner(models.TransientModel):
     _name = "purchase.requisition.partner"
     _description = "Purchase Requisition Partner"
 
-    partner_id = fields.Many2one('res.partner', 'Supplier', required=True,domain=[('supplier', '=', True)])
+    partner_id = fields.Many2one('res.partner', 'Supplier', required=True, domain=[('supplier', '=', True)])
 
     @api.model
     def view_init(self, fields_list):
+        res = super(PurchaseRequisitionPartner, self).view_init(fields_list)
 
-        res = super(purchase_requisition_partner, self).view_init(fields_list)
-        tender = self.env['purchase.requisition'].browse()
-        if not tender.line_ids:
+        if not self.env['purchase.requisition'].browse(self._context.get('active_id', False)).line_ids:
             raise Warning(_('Error!'), _(
-                'Define product(s) you want to include in the call for bids.'))
+                'Define product(s) you want to include in the call for bids.'
+                ))
+
         return res
 
     @api.multi
     def create_order(self):
-        self.env['purchase.requisition'].make_purchase_order(self.partner_id.id)
+        self.env['purchase.requisition'].browse(
+                self._context.get('active_id', False)
+                ).make_purchase_order(self[0].partner_id.id)
         return {'type': 'ir.actions.act_window_close'}
 
 
