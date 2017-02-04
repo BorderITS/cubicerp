@@ -340,10 +340,9 @@ class PurchaseRequisition(models.Model):
 
         args : 'quotation' must be a browse record
         """
-        for line in quotation.order_line:
-            if line.state != 'confirmed' or line.product_qty != line.quantity_bid:
-                return False
-        return True
+        return not quotation.order_line.filtered(
+                            lambda l: l.state != 'confirmed' or l.product_qty != l.quantity_bid
+                            ).exists()
 
     @api.model
     def _prepare_po_from_tender(self, tender):
@@ -352,9 +351,11 @@ class PurchaseRequisition(models.Model):
 
         :param tender: the source tender from which we generate a purchase order
         """
-        return {'order_line': [],
-                'requisition_id': tender.id,
-                'origin': tender.name}
+        return {
+            'order_line': [],
+            'requisition_id': tender.id,
+            'origin': tender.name,
+            }
 
     @api.model
     def _prepare_po_line_from_tender(self, tender, line, purchase_id):
@@ -365,91 +366,96 @@ class PurchaseRequisition(models.Model):
         :param line: the source tender's line from which we generate a line
         :param purchase_id: the id of the new purchase
         """
-        return {'product_qty': line.quantity_bid,
-                'order_id': purchase_id}
+        return {
+            'product_qty': line.quantity_bid,
+            'order_id': purchase_id,
+            }
 
     @api.multi
     def generate_po(self):
         """
         Generate all purchase order based on selected lines, should only be called on one tender at a time
         """
-        po = self.env['purchase.order']
+        PurchaseOrder = self.env['purchase.order']
         poline = self.env['purchase.order.line']
         id_per_supplier = {}
-        for tender in self.browse():
+
+        for tender in self:
             if tender.state == 'done':
                 raise Warning(_('Warning!'), _(
-                    'You have already generate the purchase order(s).'))
+                    'You have already generate the purchase order(s).'
+                    ))
 
-            confirm = False
-            #check that we have at least confirm one line
-            for po_line in tender.po_line_ids:
-                if po_line.state == 'confirmed':
-                    confirm = True
-                    break
-            if not confirm:
+            # check that we have at least confirm one line
+            if not tender.po_line_ids.filtered(lambda l: l.state == 'confirmed'):
                 raise Warning(_('Warning!'), _(
-                'You have no line selected for buying.'))
+                    'You have no line selected for buying.'
+                    ))
 
-            #check for complete RFQ
-            for quotation in tender.purchase_ids:
-                if (self.check_valid_quotation( quotation)):
-                    #use workflow to set PO state to confirm
-                    po.signal_workflow(self._cr, self._uid, [quotation.id], 'purchase_confirm')
+            # check for complete RFQ
+            for quotation in tender.purchase_ids.filtered(lambda q: self.check_valid_quotation(q)):
+                # use workflow to set PO state to confirm
+                quotation.signal_workflow('purchase_confirm')
 
-            #get other confirmed lines per supplier
-            for po_line in tender.po_line_ids:
-                #only take into account confirmed line that does not belong to already confirmed purchase order
-                if po_line.state == 'confirmed' and po_line.order_id.state in ['draft', 'sent', 'bid']:
-                    if id_per_supplier.get(po_line.partner_id.id):
-                        id_per_supplier[po_line.partner_id.id].append(po_line)
-                    else:
-                        id_per_supplier[po_line.partner_id.id] = [po_line]
+            # get other confirmed lines per supplier
+            # only take into account confirmed line that does not belong to already confirmed purchase order
+            for po_line in tender.po_line_ids.filtered(
+                                lambda l: l.state == 'confirmed' and
+                                          l.order_id.state in ['draft', 'sent', 'bid']
+                                ):
+                po_lines = id_per_supplier.setdefault(po_line.partner_id, self.env['purchase.order.line'])
+                po_lines |= po_line
+                id_per_supplier[po_line.partner_id] = po_lines
 
-            #generate po based on supplier and cancel all previous RFQ
+            # generate po based on supplier and cancel all previous RFQ
             # ctx = dict(context or {}, force_requisition_id=True)
             for supplier, product_line in id_per_supplier.items():
-                #copy a quotation for this supplier and change order_line then validate it
-                quotation_id = po.search([('requisition_id', '=', tender.id), ('partner_id', '=', supplier)], limit=1)[0]
-                vals = self._prepare_po_from_tender(tender)
-                new_po = po.copy(self._cr, self._uid, quotation_id, default=vals, context=self._context)
-                #duplicate po_line and change product_qty if needed and associate them to newly created PO
-                for line in product_line:
-                    vals = self._prepare_po_line_from_tender(tender, line, new_po)
-                    poline.copy(self._cr, self._uid, line.id, default=vals, context=self._context)
-                #use workflow to set new PO state to confirm
-                po.signal_workflow(self._cr, self._uid, [new_po], 'purchase_confirm')
+                # copy a quotation for this supplier and change order_line then validate it
+                quotation_id = PurchaseOrder.search([
+                                    ('requisition_id', '=', tender.id),
+                                    ('partner_id', '=', supplier.id),
+                                    ], limit=1)[0]
+                new_po = quotation_id.copy(self._prepare_po_from_tender(tender))
 
-            #cancel other orders
+                # duplicate po_line and change product_qty if needed and associate them to newly created PO
+                for line in product_line:
+                    line.copy(self._prepare_po_line_from_tender(tender, line, new_po.id))
+
+                # use workflow to set new PO state to confirm
+                new_po.signal_workflow('purchase_confirm')
+
+            # cancel other orders
             self.cancel_unconfirmed_quotations(tender)
 
-            #set tender to state done
+            # set tender to state done
             tender.signal_workflow('done')
         return True
 
     @api.model
     def cancel_unconfirmed_quotations(self, tender):
         #cancel other orders
-        for quotation in tender.purchase_ids:
-            if quotation.state in ['draft', 'sent', 'bid']:
-                quotation.signal_workflow('purchase_cancel')
-                quotation.message_post(body=_('Cancelled by the call for bids associated to this request for quotation.'))
+        for quotation in tender.purchase_ids.filtered(lambda q: q.state in ['draft', 'sent', 'bid']):
+            quotation.signal_workflow('purchase_cancel')
+            quotation.message_post(body=_('Cancelled by the call for bids associated to this request for quotation.'))
         return True
 
 
-class purchase_requisition_line(models.Model):
+class PurchaseRequisitionLine(models.Model):
     _name = "purchase.requisition.line"
     _description = "Purchase Requisition Line"
     _rec_name = 'product_id'
 
     product_id = fields.Many2one('product.product', 'Product', domain=[('purchase_ok', '=', True)])
     name = fields.Text('Description')
-    product_uom_id = fields.Many2one('product.uom', 'Product Unit of Measure',default=lambda self: self.env['purchase.order.line']._get_uom_id())
-    product_qty = fields.Float('Quantity', digits_compute=dp.get_precision('Product Unit of Measure'), default=1.0)
+    product_uom_id = fields.Many2one('product.uom', 'Product Unit of Measure',
+                                     default=lambda self: self.env['purchase.order.line']._get_uom_id())
+    product_qty = fields.Float('Quantity', digits=dp.get_precision('Product Unit of Measure'), default=1.0)
     requisition_id = fields.Many2one('purchase.requisition', 'Call for Bids', ondelete='cascade')
-    company_id = fields.Many2one('res.company', string='Company', related='requisition_id.company_id', store=True, readonly=True, default=lambda self: self.env['res.company']._company_default_get('purchase.requisition.line'))
+    company_id = fields.Many2one('res.company', string='Company', related='requisition_id.company_id', store=True,
+                                 readonly=True, default=lambda self: self.env['res.company']._company_default_get(
+                                                'purchase.requisition.line'))
     account_analytic_id = fields.Many2one('account.analytic.account', 'Analytic Account')
-    schedule_date = fields.Date('Scheduled Date',  required=True)
+    schedule_date = fields.Date('Scheduled Date', required=True)
 
 
     # _columns = {
@@ -463,23 +469,28 @@ class purchase_requisition_line(models.Model):
     #     'schedule_date': fields.date('Scheduled Date',  required=True),
     # }
 
-    _sql_constraints =[('check_product_name', 'CHECK(not(product_id is null and name is null))', 'You must fill the description or the product!')]
+    _sql_constraints = [
+        ('check_product_name', 'CHECK(not(product_id is null and name is null))',
+         'You must fill the description or the product!'),
+        ]
 
-    def onchange_product_id(self, cr, uid, ids, product_id, product_uom_id, parent_analytic_account, analytic_account, parent_date, date, context=None):
+    @api.one
+    @api.onchange('product_id')
+    def onchange_product_id(self):
         """ Changes UoM and name if product_id changes.
         @param name: Name of the field
         @param product_id: Changed product_id
         @return:  Dictionary of changed values
         """
-        value = {'product_uom_id': ''}
-        if product_id:
-            prod = self.pool.get('product.product').browse(cr, uid, product_id, context=context)
-            value = {'product_uom_id': prod.uom_id.id, 'product_qty': 1.0}
-        if not analytic_account:
-            value.update({'account_analytic_id': parent_analytic_account})
-        if not date:
-            value.update({'schedule_date': parent_date})
-        return {'value': value}
+        if self.product_id:
+            self.product_uom_id = self.product_id.uom_id
+            self.product_qty = 1.0
+        else:
+            self.product_uom_id = False
+        if not self.account_analytic_id:
+            self.account_analytic_id = self.requisition_id.account_analytic_account_id
+        if not self.schedule_date:
+            self.schedule_date = self.requisition_id.schedule_date
 
 
     # _defaults = {
@@ -488,7 +499,7 @@ class purchase_requisition_line(models.Model):
     #     'product_uom_id': lambda self, cr, uid, c: self.pool.get('purchase.order.line')._get_uom_id(cr, uid, context=c),
     # }
 
-class purchase_order(models.Model):
+class PurchaseOrder(models.Model):
     _inherit = "purchase.order"
 
     requisition_id = fields.Many2one('purchase.requisition', 'Call for Bids', copy=False)
@@ -499,90 +510,101 @@ class purchase_order(models.Model):
 
     @api.multi
     def wkf_confirm_order(self):
-        res = super(purchase_order, self).wkf_confirm_order()
-        proc_obj = self.env['procurement.order']
-        for po in self.browse():
-            if po.requisition_id and (po.requisition_id.exclusive == 'exclusive'):
-                for order in po.requisition_id.purchase_ids:
-                    if order.id != po.id:
-                        proc_ids = proc_obj.search([('purchase_id', '=', order.id)])
-                        if proc_ids and po.state == 'confirmed':
-                            proc_ids.write({'purchase_id': po.id})
-                        order.signal_workflow('purchase_cancel')
-                    po.requisition_id.tender_done()
+        res = super(PurchaseOrder, self).wkf_confirm_order()
+        ProcurementOrder = self.env['procurement.order']
+
+        for po in self.filtered(lambda o: o.requisition_id and o.requisition_id.exclusive == 'exclusive'):
+            for order in po.requisition_id.purchase_ids.filtered(lambda o: o != po):
+                if po.state == 'confirmed':
+                    ProcurementOrder.search([('purchase_id', '=', order.id)]).write({'purchase_id': po.id})
+                order.signal_workflow('purchase_cancel')
+                po.requisition_id.tender_done()
+
         return res
 
-    def _prepare_order_line_move(self, cr, uid, order, order_line, picking_id, group_id, context=None):
-        stock_move_lines = super(purchase_order, self)._prepare_order_line_move(cr, uid, order, order_line, picking_id, group_id, context=context)
-        if order.requisition_id and order.requisition_id.procurement_id and order.requisition_id.procurement_id.move_dest_id:
+    @api.model
+    def _prepare_order_line_move(self, order, order_line, picking_id, group_id):
+        stock_move_lines = super(PurchaseOrder, self)._prepare_order_line_move(
+                                                        order=order,
+                                                        order_line=order_line,
+                                                        picking_id=picking_id,
+                                                        group_id=group_id
+                                                        )
+        if (order.requisition_id and order.requisition_id.procurement_id and
+                order.requisition_id.procurement_id.move_dest_id):
+            move_dest_id = order.requisition_id.procurement_id.move_dest_id.id
             for i in range(0, len(stock_move_lines)):
-                stock_move_lines[i]['move_dest_id'] = order.requisition_id.procurement_id.move_dest_id.id
+                stock_move_lines[i]['move_dest_id'] = move_dest_id
         return stock_move_lines
 
 
-class purchase_order_line(osv.osv):
+class PurchaseOrderLine(models.Model):
     _inherit = 'purchase.order.line'
 
-    _columns = {
-        'quantity_bid': fields.float('Quantity Bid', digits_compute=dp.get_precision('Product Unit of Measure'), help="Technical field for not loosing the initial information about the quantity proposed in the bid"),
-    }
+    quantity_bid = fields.Float('Quantity Bid', digits=dp.get_precision('Product Unit of Measure'),
+                                help="Technical field for not loosing the initial information about the quantity "
+                                     "proposed in the bid")
 
-    def action_draft(self, cr, uid, ids, context=None):
-        self.write(cr, uid, ids, {'state': 'draft'}, context=context)
+    @api.multi
+    def action_draft(self):
+        self.write({'state': 'draft'})
 
-    def action_confirm(self, cr, uid, ids, context=None):
-        super(purchase_order_line, self).action_confirm(cr, uid, ids, context=context)
-        for element in self.browse(cr, uid, ids, context=context):
-            if not element.quantity_bid:
-                self.write(cr, uid, ids, {'quantity_bid': element.product_qty}, context=context)
+    @api.multi
+    def action_confirm(self):
+        super(PurchaseOrderLine, self).action_confirm()
+        for element in self.filtered(lambda l: not l.quantity_bid):
+            self.write({'quantity_bid': element.product_qty})
         return True
 
-    def generate_po(self, cr, uid, tender_id, context=None):
+    @api.model
+    def generate_po(self, tender_id):
         #call generate_po from tender with active_id. Called from js widget
-        return self.pool.get('purchase.requisition').generate_po(cr, uid, [tender_id], context=context)
+        return self.env['purchase.requisition'].browse(tender_id).generate_po()
 
 
-class product_template(osv.osv):
+class ProductTemplate(models.Model):
     _inherit = 'product.template'
 
-    _columns = {
-        'purchase_requisition': fields.boolean('Call for Bids', help="Check this box to generate Call for Bids instead of generating requests for quotation from procurement.")
-    }
+    purchase_requisition = fields.Boolean('Call for Bids',
+                                          help="Check this box to generate Call for Bids instead of generating requests "
+                                               "for quotation from procurement.")
 
 
-class procurement_order(osv.osv):
+class ProcurementOrder(models.Model):
     _inherit = 'procurement.order'
-    _columns = {
-        'requisition_id': fields.many2one('purchase.requisition', 'Latest Requisition')
-    }
 
-    def _run(self, cr, uid, procurement, context=None):
-        requisition_obj = self.pool.get('purchase.requisition')
-        warehouse_obj = self.pool.get('stock.warehouse')
+    requisition_id = fields.Many2one('purchase.requisition', 'Latest Requisition')
+
+    @api.model
+    def _run(self, procurement):
         if procurement.rule_id and procurement.rule_id.action == 'buy' and procurement.product_id.purchase_requisition:
-            warehouse_id = warehouse_obj.search(cr, uid, [('company_id', '=', procurement.company_id.id)], context=context)
-            requisition_id = requisition_obj.create(cr, uid, {
-                'origin': procurement.origin,
-                'date_end': procurement.date_planned,
-                'warehouse_id': warehouse_id and warehouse_id[0] or False,
-                'company_id': procurement.company_id.id,
-                'procurement_id': procurement.id,
-                'picking_type_id': procurement.rule_id.picking_type_id.id,
-                'line_ids': [(0, 0, {
-                    'product_id': procurement.product_id.id,
-                    'product_uom_id': procurement.product_uom.id,
-                    'product_qty': procurement.product_qty,
-                    'schedule_date': procurement.date_planned,
-                })],
-            })
-            self.message_post(cr, uid, [procurement.id], body=_("Purchase Requisition created"), context=context)
-            return self.write(cr, uid, [procurement.id], {'requisition_id': requisition_id}, context=context)
-        return super(procurement_order, self)._run(cr, uid, procurement, context=context)
+            warehouse_id = self.env['stock.warehouse'].search([('company_id', '=', procurement.company_id.id)])
+            requisition_id = self.env['purchase.requisition'].create({
+                                    'origin': procurement.origin,
+                                    'date_end': procurement.date_planned,
+                                    'warehouse_id': warehouse_id and warehouse_id[0] or False,
+                                    'company_id': procurement.company_id.id,
+                                    'procurement_id': procurement.id,
+                                    'picking_type_id': procurement.rule_id.picking_type_id.id,
+                                    'line_ids': [
+                                        (0, 0, {
+                                        'product_id': procurement.product_id.id,
+                                        'product_uom_id': procurement.product_uom.id,
+                                        'product_qty': procurement.product_qty,
+                                        'schedule_date': procurement.date_planned,
+                                        })
+                                        ],
+                                    })
+            procurement.message_post(body=_("Purchase Requisition created"))
+            return procurement.write({'requisition_id': requisition_id.id})
 
-    def _check(self, cr, uid, procurement, context=None):
+        return super(ProcurementOrder, self)._run(procurement)
+
+    @api.model
+    def _check(self, procurement):
         if procurement.rule_id and procurement.rule_id.action == 'buy' and procurement.product_id.purchase_requisition:
             if procurement.requisition_id.state == 'done':
                 if any([purchase.shipped for purchase in procurement.requisition_id.purchase_ids]):
                     return True
             return False
-        return super(procurement_order, self)._check(cr, uid, procurement, context=context)
+        return super(ProcurementOrder, self)._check(procurement)
