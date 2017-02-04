@@ -297,29 +297,40 @@ class PurchaseRequisition(models.Model):
         Create New RFQ for Supplier
         """
         #context = dict(context or {})
+        res = {}
         assert partner_id, 'Supplier should be specified'
-        purchase_order = self.env['purchase.order']
-        purchase_order_line = self.env['purchase.order.line']
-        res_partner = self.env['res.partner']
-        supplier = res_partner.browse(partner_id)
-        for requisition in self.browse():
+        PurchaseOrder = self.env['purchase.order']
+        PurchaseOrderLine = self.env['purchase.order.line']
+        supplier = self.env['res.partner'].browse(partner_id)
+        for requisition in self:
             if not requisition.multiple_rfq_per_supplier:
-                rfq = requisition.purchase_ids.filtered(lambda x: x.state != 'cancel' and x.parnet_id == supplier)
+                rfq = requisition.purchase_ids.filtered(lambda po: po.state != 'cancel' and po.parnet_id == supplier)
                 if rfq:
                     raise Warning(_('Warning!'), _(
                         'You have already one %s purchase order for this partner, you must cancel this purchase order '
-                        'to create a new quotation.') % (rfq[0].state))
+                        'to create a new quotation.'
+                        ) % rfq[0].state)
 
-            main_self = self.with_context({'mail_create_nolog': True})
-            purchase_order_vals = main_self._prepare_purchase_order(requisition, supplier)
-            purchase_id = purchase_order.create(purchase_order_vals)
+            purchase_id = PurchaseOrder.with_context(mail_create_nolog=True).create(
+                                        self.with_context(mail_create_nolog=True)._prepare_purchase_order(
+                                            requisition,
+                                            supplier
+                                            ))
+
             purchase_id.with_context(mail_create_nolog=True).message_post(body=_("RFQ created"))
 
-            requisition.id = purchase_id
+            res[requisition.id] = purchase_id.id
 
-            for line in requisition.line_ids.with_context(mail_create_nolog=True):
-                purchase_order_line_vals =  self._prepare_purchase_order_line(requisition, line, purchase_id, supplier)
-                line.create(purchase_order_line_vals)
+            for line in requisition.line_ids:
+                PurchaseOrderLine.with_context(mail_create_nolog=True).create(
+                    self.with_context(mail_create_nolog=True)._prepare_purchase_order_line(
+                        requisition,
+                        line,
+                        purchase_id.id,
+                        supplier
+                        ))
+
+        return res
 
     @api.model
     def check_valid_quotation(self, quotation):
