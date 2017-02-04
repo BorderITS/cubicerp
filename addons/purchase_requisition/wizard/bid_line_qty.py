@@ -19,20 +19,20 @@
 #
 ##############################################################################
 
-from openerp.osv import fields, osv
 import openerp.addons.decimal_precision as dp
+from openerp import api, fields, models
 
-class bid_line_qty(osv.osv_memory):
+class bid_line_qty(models.TransientModel):
     _name = "bid.line.qty"
     _description = "Change Bid line quantity"
-    _columns = {
-        'qty': fields.float('Quantity', digits_compute=dp.get_precision('Product Unit of Measure'), required=True),
-    }
 
-    def change_qty(self, cr, uid, ids, context=None):
-        active_ids = context and context.get('active_ids', [])
-        data = self.browse(cr, uid, ids, context=context)[0]
-        self.pool.get('purchase.order.line').write(cr, uid, active_ids, {'quantity_bid': data.qty})
+    qty = fields.Float('Quantity', digits_compute=dp.get_precision('Product Unit of Measure'), required=True)
+
+    @api.multi
+    def change_qty(self):
+        active_ids = self._context and self._context.get('active_ids', [])
+        data = self.browse()[0]
+        self.env['purchase.order.line'].write(active_ids, {'quantity_bid': data.qty})
         return {'type': 'ir.actions.act_window_close'}
 
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:
