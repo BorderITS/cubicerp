@@ -99,7 +99,7 @@ class PurchaseRequisition(models.Model):
                         tender.parent_id.name
                         ))
 
-            (tender | tender.chield_ids)._tender_cancel()
+            (tender | tender.child_ids)._tender_cancel()
         return True
 
     @api.multi
@@ -120,7 +120,7 @@ class PurchaseRequisition(models.Model):
                     tender.parent_id.name
                     ))
 
-            (tender | tender.chield_ids)._tender_in_progress()
+            (tender | tender.child_ids)._tender_in_progress()
         return True
 
     @api.multi
@@ -137,7 +137,7 @@ class PurchaseRequisition(models.Model):
                     tender.parent_id.name
                     ))
 
-            (tender | tender.chield_ids)._tender_open()
+            (tender | tender.child_ids)._tender_open()
         return True
 
     @api.multi
@@ -154,7 +154,7 @@ class PurchaseRequisition(models.Model):
                     tender.parent_id.name
                     ))
 
-            (tender | tender.chield_ids)._tender_done()
+            (tender | tender.child_ids)._tender_done()
         return True
 
     @api.multi
@@ -171,7 +171,7 @@ class PurchaseRequisition(models.Model):
                     tender.parent_id.name
                     ))
 
-            (tender | tender.chield_ids)._tender_draft()
+            (tender | tender.child_ids)._tender_draft()
         return True
 
     @api.multi
@@ -258,7 +258,7 @@ class PurchaseRequisition(models.Model):
         ctx['tz'] = requisition.user_id.tz
         date_order = (requisition.ordering_date and
                       flds.date.date_to_datetime(self, self._cr, self._uid, requisition.ordering_date, context=ctx) or
-                      fields.datetime.now())
+                      fields.datetime.now().strftime(DEFAULT_SERVER_DATETIME_FORMAT))
         qty = self.env['product.uom']._compute_qty(
                                     requisition_line.product_uom_id.id,
                                     requisition_line.product_qty,
@@ -304,7 +304,7 @@ class PurchaseRequisition(models.Model):
         supplier = self.env['res.partner'].browse(partner_id)
         for requisition in self:
             if not requisition.multiple_rfq_per_supplier:
-                rfq = requisition.purchase_ids.filtered(lambda po: po.state != 'cancel' and po.parnet_id == supplier)
+                rfq = requisition.purchase_ids.filtered(lambda po: po.state != 'cancel' and po.partner_id == supplier)
                 if rfq:
                     raise Warning(_('Warning!'), _(
                         'You have already one %s purchase order for this partner, you must cancel this purchase order '
@@ -488,7 +488,7 @@ class PurchaseRequisitionLine(models.Model):
         else:
             self.product_uom_id = False
         if not self.account_analytic_id:
-            self.account_analytic_id = self.requisition_id.account_analytic_account_id
+            self.account_analytic_id = self.requisition_id.account_analytic_id
         if not self.schedule_date:
             self.schedule_date = self.requisition_id.schedule_date
 
