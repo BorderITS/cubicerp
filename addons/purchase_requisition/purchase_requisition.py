@@ -68,7 +68,7 @@ class PurchaseRequisition(models.Model):
     multiple_rfq_per_supplier = fields.Boolean('Multiple RFQ per supplier')
     account_analytic_id = fields.Many2one('account.analytic.account', 'Analytic Account')
     picking_type_id = fields.Many2one('stock.picking.type', 'Picking Type', required=True ,
-                                      default=lambda self: self._default_picking_type_id)
+                                      default=lambda self: self._default_picking_type_id())
     compliance = fields.Boolean("Compliance", readonly=True,
                                 help="This is used by the end user to accept and approve to the products and"
                                       " services delivered by the supplier")
@@ -99,7 +99,7 @@ class PurchaseRequisition(models.Model):
                         tender.parent_id.name
                         ))
 
-            (tender | tender.chield_ids)._tender_cancel()
+            (tender | tender.child_ids)._tender_cancel()
         return True
 
     @api.multi
@@ -120,7 +120,7 @@ class PurchaseRequisition(models.Model):
                     tender.parent_id.name
                     ))
 
-            (tender | tender.chield_ids)._tender_in_progress()
+            (tender | tender.child_ids)._tender_in_progress()
         return True
 
     @api.multi
@@ -137,7 +137,7 @@ class PurchaseRequisition(models.Model):
                     tender.parent_id.name
                     ))
 
-            (tender | tender.chield_ids)._tender_open()
+            (tender | tender.child_ids)._tender_open()
         return True
 
     @api.multi
@@ -154,7 +154,7 @@ class PurchaseRequisition(models.Model):
                     tender.parent_id.name
                     ))
 
-            (tender | tender.chield_ids)._tender_done()
+            (tender | tender.child_ids)._tender_done()
         return True
 
     @api.multi
@@ -171,7 +171,7 @@ class PurchaseRequisition(models.Model):
                     tender.parent_id.name
                     ))
 
-            (tender | tender.chield_ids)._tender_draft()
+            (tender | tender.child_ids)._tender_draft()
         return True
 
     @api.multi
@@ -209,12 +209,12 @@ class PurchaseRequisition(models.Model):
             @return: the product line tree view
         """
         res = self.env.ref('purchase_requisition.purchase_line_tree').read()[0]
-        res['domain'] = [('id', 'in', self[0:0].mapped('po_line_ids.id'))]
+        res['domain'] = [('id', 'in', self[:1].mapped('po_line_ids.id'))]
         res['context'] = self._context.copy()
         res['context'] = {
             'search_default_groupby_product': True,
             'search_default_hide_cancelled': True,
-            'tender_id': self[0:0].id,
+            'tender_id': self[:1].id,
             }
         return res
 
@@ -224,7 +224,7 @@ class PurchaseRequisition(models.Model):
             @return: the RFQ tree view
         """
         res = self.env.ref('purchase.purchase_rfq').read()[0]
-        res['domain'] = [('id', 'in', self[0:0].mapped('purchase_ids.id'))]
+        res['domain'] = [('id', 'in', self[:1].mapped('purchase_ids.id'))]
         res['context'] = self._context.copy()
         return res
 
@@ -258,7 +258,7 @@ class PurchaseRequisition(models.Model):
         ctx['tz'] = requisition.user_id.tz
         date_order = (requisition.ordering_date and
                       flds.date.date_to_datetime(self, self._cr, self._uid, requisition.ordering_date, context=ctx) or
-                      fields.datetime.now())
+                      fields.datetime.now().strftime(DEFAULT_SERVER_DATETIME_FORMAT))
         qty = self.env['product.uom']._compute_qty(
                                     requisition_line.product_uom_id.id,
                                     requisition_line.product_qty,
@@ -304,7 +304,7 @@ class PurchaseRequisition(models.Model):
         supplier = self.env['res.partner'].browse(partner_id)
         for requisition in self:
             if not requisition.multiple_rfq_per_supplier:
-                rfq = requisition.purchase_ids.filtered(lambda po: po.state != 'cancel' and po.parnet_id == supplier)
+                rfq = requisition.purchase_ids.filtered(lambda po: po.state != 'cancel' and po.partner_id == supplier)
                 if rfq:
                     raise Warning(_('Warning!'), _(
                         'You have already one %s purchase order for this partner, you must cancel this purchase order '
@@ -488,7 +488,7 @@ class PurchaseRequisitionLine(models.Model):
         else:
             self.product_uom_id = False
         if not self.account_analytic_id:
-            self.account_analytic_id = self.requisition_id.account_analytic_account_id
+            self.account_analytic_id = self.requisition_id.account_analytic_id
         if not self.schedule_date:
             self.schedule_date = self.requisition_id.schedule_date
 
@@ -518,7 +518,7 @@ class PurchaseOrder(models.Model):
                 if po.state == 'confirmed':
                     ProcurementOrder.search([('purchase_id', '=', order.id)]).write({'purchase_id': po.id})
                 order.signal_workflow('purchase_cancel')
-                po.requisition_id.tender_done()
+            po.requisition_id.tender_done()
 
         return res
 
