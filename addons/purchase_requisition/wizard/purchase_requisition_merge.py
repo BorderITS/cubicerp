@@ -46,11 +46,9 @@ class PurchaseRequisitionMerge(models.TransientModel):
     # purchase_ids = fields.One2many('purchase.order', 'requisition_id', string='Purchase Orders',
     #                                states={'done': [('readonly', True)]})
     # po_line_ids = fields.One2many('purchase.order.line', compute="_compute_po_line_ids",  string='Products by supplier')
-    line_ids = fields.One2many('purchase.requisition.line', 'requisition_id', string='Products to Purchase',
-                               states={'done': [('readonly', True)]}, copy=True)
+    line_ids = fields.One2many('purchase.requisition.line', 'requisition_id', string='Products to Purchase', copy=True)
     # procurement_id = fields.Many2one('procurement.order', string="Procurement", ondelete='set null', copy=False)
     warehouse_id = fields.Many2one('stock.warehouse', 'Warehouse')
     multiple_rfq_per_supplier = fields.Boolean('Multiple RFQ per supplier')
     account_analytic_id = fields.Many2one('account.analytic.account', 'Analytic Account')
-    picking_type_id = fields.Many2one('stock.picking.type', 'Picking Type', required=True ,
-                                      default=lambda self: self._default_picking_type_id())
+    picking_type_id = fields.Many2one('stock.picking.type', 'Picking Type', required=True)

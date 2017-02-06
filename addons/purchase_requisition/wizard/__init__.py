@@ -21,6 +21,7 @@
 
 import purchase_requisition_partner
 import bid_line_qty
+import purchase_requisition_merge
 
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:
 
