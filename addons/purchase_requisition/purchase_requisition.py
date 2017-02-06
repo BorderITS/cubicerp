@@ -68,7 +68,7 @@ class PurchaseRequisition(models.Model):
     multiple_rfq_per_supplier = fields.Boolean('Multiple RFQ per supplier')
     account_analytic_id = fields.Many2one('account.analytic.account', 'Analytic Account')
     picking_type_id = fields.Many2one('stock.picking.type', 'Picking Type', required=True ,
-                                      default=lambda self: self._default_picking_type_id)
+                                      default=lambda self: self._default_picking_type_id())
     compliance = fields.Boolean("Compliance", readonly=True,
                                 help="This is used by the end user to accept and approve to the products and"
                                       " services delivered by the supplier")
@@ -209,12 +209,12 @@ class PurchaseRequisition(models.Model):
             @return: the product line tree view
         """
         res = self.env.ref('purchase_requisition.purchase_line_tree').read()[0]
-        res['domain'] = [('id', 'in', self[0:0].mapped('po_line_ids.id'))]
+        res['domain'] = [('id', 'in', self[:1].mapped('po_line_ids.id'))]
         res['context'] = self._context.copy()
         res['context'] = {
             'search_default_groupby_product': True,
             'search_default_hide_cancelled': True,
-            'tender_id': self[0:0].id,
+            'tender_id': self[:1].id,
             }
         return res
 
@@ -224,7 +224,7 @@ class PurchaseRequisition(models.Model):
             @return: the RFQ tree view
         """
         res = self.env.ref('purchase.purchase_rfq').read()[0]
-        res['domain'] = [('id', 'in', self[0:0].mapped('purchase_ids.id'))]
+        res['domain'] = [('id', 'in', self[:1].mapped('purchase_ids.id'))]
         res['context'] = self._context.copy()
         return res
 
@@ -518,7 +518,7 @@ class PurchaseOrder(models.Model):
                 if po.state == 'confirmed':
                     ProcurementOrder.search([('purchase_id', '=', order.id)]).write({'purchase_id': po.id})
                 order.signal_workflow('purchase_cancel')
-                po.requisition_id.tender_done()
+            po.requisition_id.tender_done()
 
         return res
 
