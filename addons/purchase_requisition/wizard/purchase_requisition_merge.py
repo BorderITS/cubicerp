@@ -66,7 +66,7 @@ class PurchaseRequisitionMerge(models.TransientModel):
 
         if self.env['purchase.requisition'].browse(
                         self._context.get('active_ids')
-                        ).filtered(lambda r: r.state != 'in_progress' or r.parent_id):
+                        ).filtered(lambda r: r.state != 'in_progress' or r.parent_id or r.child_ids):
             raise Warning(_('Error!'), _(
                 'The selected requisition are already processed or merged.'
                 ))
