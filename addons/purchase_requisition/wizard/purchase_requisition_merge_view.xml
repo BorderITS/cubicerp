@@ -36,7 +36,7 @@
                                         <field name="product_uom_id" groups="product.group_uom"/>
                                         <field name="schedule_date"/>
                                         <field name="account_analytic_id" groups="purchase.group_analytic_accounting"/>
-
+                                        <field name="requisition_id" invisible="1"/>
                                     </tree>
                                     <form string="Products">
                                         <group>
@@ -47,6 +47,7 @@
                                             <field name="schedule_date"/>
                                             <field name="account_analytic_id"
                                                    groups="purchase.group_analytic_accounting"/>
+                                            <field name="requisition_id" invisible="1"/>
                                             <field name="company_id" groups="base.group_multi_company"
                                                    widget="selection"/>
                                         </group>
@@ -102,7 +103,7 @@
                     </sheet>
 
                     <footer>
-                        <button string="Create" class="oe_highlight"/>
+                        <button name="merge_requisition" string="Merge" class="oe_highlight" type="object"/>
                         or
                         <button string="Cancel" class="oe_link" special="cancel" />
                     </footer>
@@ -111,7 +112,7 @@
             </field>
         </record>
 
-        <act_window name="Requisition Merge"
+        <act_window name="Merge"
             res_model="purchase.requisition.merge"
             src_model="purchase.requisition"
             view_mode="form"
