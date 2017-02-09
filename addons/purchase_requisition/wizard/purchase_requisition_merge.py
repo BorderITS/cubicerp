@@ -60,18 +60,21 @@ class PurchaseRequisitionMerge(models.TransientModel):
     def _default_picking_type_id(self):
         return self.env.ref('stock.picking_type_in')
 
-    @api.model
-    def view_init(self, fields_list):
-        res = super(PurchaseRequisitionMerge, self).view_init(fields_list)
-
-        if self.env['purchase.requisition'].browse(
+    @api.multi
+    def action_requisition_merge(self):
+        if self._context.get('active_model') == 'purchase.requisition' and self.env['purchase.requisition'].browse(
                         self._context.get('active_ids')
-                        ).filtered(lambda r: r.state != 'in_progress' or r.parent_id or r.child_ids):
+                        ).filtered(lambda r: r.state != 'in_progress' or
+                                             r.parent_id or
+                                             r.child_ids):
             raise Warning(_('Error!'), _(
-                'The selected requisition are already processed or merged.'
+                'The selected requisitions are already processed or merged.'
                 ))
 
-        return res
+        action = self.env.ref('purchase_requisition.purchase_requisition_merge').read()[0]
+        action['context'] = self._context.copy()
+
+        return action
 
     @api.model
     def default_get(self, fields_list):
