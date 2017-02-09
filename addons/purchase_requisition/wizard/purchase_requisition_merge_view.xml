@@ -112,14 +112,29 @@
             </field>
         </record>
 
-        <act_window name="Merge"
-            res_model="purchase.requisition.merge"
-            src_model="purchase.requisition"
-            view_mode="form"
-            target="new"
-            key2="client_action_multi"
-            multi="True"
-            id="action_purchase_requisition_merge"/>
+
+        <record id="action_purchase_requisition_merge" model="ir.actions.server">
+            <field name="name">Merge</field>
+            <field name="model_id" ref="model_purchase_requisition_merge"/>
+            <field name="state">code</field>
+            <field name="code">action = env['purchase.requisition.merge'].action_requisition_merge()</field>
+        </record>
+
+        <record id="ir_open_partial_move_wizard" model="ir.values">
+            <field eval="'client_action_multi'" name="key2"/>
+            <field eval="'purchase.requisition'" name="model"/>
+            <field name="name">Merge</field>
+            <field eval="'ir.actions.server,%d'%action_purchase_requisition_merge" name="value"/>
+        </record>
+
+        <record id="purchase_requisition_merge" model="ir.actions.act_window">
+            <field name="name">Merge</field>
+            <field name="res_model">purchase.requisition.merge</field>
+            <field name="type">ir.actions.act_window</field>
+            <field name="view_mode">form</field>
+            <field name="target">new</field>
+            <field name="view_id" ref="view_purchase_requisition_merge"/>
+        </record>
 
         <!--<record id="action_purchase_requisition_merge" model="ir.actions.act_window">
             <field name="name">Requisition MergeXXXX</field>
